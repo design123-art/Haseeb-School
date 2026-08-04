@@ -19,74 +19,99 @@
     <img src="icon-192.png" alt="">
     <div><h1>Haseeb School</h1><span>Teacher App</span></div>
   </div>
-  <div class="card">
+  <div class="card fade-in">
     <label for="email">Username / Email</label>
     <input type="email" id="email" autocomplete="username" placeholder="teacher@haseeb.school">
     <label for="password">Password</label>
     <input type="password" id="password" autocomplete="current-password" placeholder="••••••••">
-    <button class="btn btn-primary" id="loginBtn">Login</button>
+    <button class="btn btn-primary" id="loginBtn">Log In</button>
     <div class="error-box" id="loginError"></div>
   </div>
-  <button class="btn btn-outline hidden" id="installBtn" style="margin-top:14px;">📲 App Install Karein (Home Screen Icon)</button>
-  <div class="center-note" id="installHint">Chrome mein ⋮ menu → "Add to Home Screen" se bhi install ho sakta hai.</div>
+  <button class="btn btn-outline hidden" id="installBtn" style="margin-top:14px;">📲 Install App (Add to Home Screen)</button>
+  <div class="center-note" id="installHint">You can also install this from your browser menu → "Add to Home Screen".</div>
 </div>
 
 <!-- APP SHELL -->
 <div class="screen hidden" id="appScreen">
   <div class="topbar">
-    <div><div style="font-weight:700;" id="teacherName">—</div><div class="who" id="teacherClass">—</div></div>
+    <div class="topbar-id">
+      <div class="avatar" id="teacherAvatar">—</div>
+      <div>
+        <div class="topbar-name" id="teacherName">—</div>
+        <div class="who" id="teacherClass">—</div>
+      </div>
+    </div>
     <button class="logout" id="logoutBtn">Logout</button>
   </div>
 
   <!-- DASHBOARD -->
   <div id="view-dashboard">
     <div class="tiles">
-      <div class="tile" data-view="attendance"><span class="emoji">📋</span><b>Online Attendance</b></div>
-      <div class="tile" data-view="complaints"><span class="emoji">📝</span><b>Complain about Student</b></div>
-      <div class="tile" data-view="myAttendance"><span class="emoji">🗓️</span><b>My Attendance</b></div>
-      <div class="tile" data-view="notifications"><span class="emoji">🔔</span><b>Notifications</b><span id="notifDot" style="color:var(--danger); font-weight:800;"></span></div>
+      <div class="tile" data-view="attendance">
+        <span class="tile-icon tile-icon-green">📋</span>
+        <b>Class Attendance</b>
+        <small>Mark today's attendance</small>
+      </div>
+      <div class="tile" data-view="complaints">
+        <span class="tile-icon tile-icon-amber">📝</span>
+        <b>Student Complaint</b>
+        <small>Report an issue to admin</small>
+      </div>
+      <div class="tile" data-view="myAttendance">
+        <span class="tile-icon tile-icon-purple">🗓️</span>
+        <b>My Attendance</b>
+        <small>Your monthly record</small>
+      </div>
+      <div class="tile" data-view="notifications">
+        <span class="tile-icon tile-icon-blue">🔔</span>
+        <b>Notifications</b>
+        <small id="notifDot">You're all caught up</small>
+      </div>
     </div>
   </div>
 
   <!-- STUDENT ATTENDANCE -->
   <div id="view-attendance" class="hidden">
     <button class="back-link" data-back>← Dashboard</button>
+    <h2 class="view-title">Class Attendance</h2>
     <div class="window-banner" id="windowBanner">Checking attendance window…</div>
     <div class="summary-strip">
-      <div class="chip"><b id="sumPresent">0</b><small>Present</small></div>
-      <div class="chip"><b id="sumAbsent">0</b><small>Absent</small></div>
-      <div class="chip"><b id="sumLeave">0</b><small>Leave</small></div>
+      <div class="chip chip-present"><b id="sumPresent">0</b><small>Present</small></div>
+      <div class="chip chip-absent"><b id="sumAbsent">0</b><small>Absent</small></div>
+      <div class="chip chip-leave"><b id="sumLeave">0</b><small>Leave</small></div>
     </div>
     <div class="card" style="padding:8px 16px;">
       <div id="rosterList"><div class="center-note">Loading roster…</div></div>
     </div>
     <button class="btn btn-primary" id="submitBtn" disabled>Submit Today's Attendance</button>
     <div class="error-box" id="submitError"></div>
-    <div id="successNote" class="center-note hidden">✅ Attendance submitted for today.</div>
+    <div id="successNote" class="success-note hidden">✅ Attendance submitted for today.</div>
   </div>
 
   <!-- COMPLAINTS -->
   <div id="view-complaints" class="hidden">
     <button class="back-link" data-back>← Dashboard</button>
+    <h2 class="view-title">Complaint about a Student</h2>
     <div class="card">
       <label for="complaintStudent">Student</label>
       <select id="complaintStudent"><option value="">Select student…</option></select>
       <label for="complaintText">Complaint / Note</label>
-      <textarea id="complaintText" placeholder="Kya masla hai, tafseel likhein…"></textarea>
+      <textarea id="complaintText" placeholder="Describe the issue in detail…"></textarea>
       <button class="btn btn-primary" id="sendComplaintBtn">Send to Admin</button>
       <div class="error-box" id="complaintError"></div>
     </div>
     <div class="card" style="margin-top:14px;">
-      <div class="card-head" style="font-weight:700; margin-bottom:6px;">Your recent complaints</div>
+      <div class="card-head">Your Recent Complaints</div>
       <div id="complaintsList"><div class="center-note">Loading…</div></div>
     </div>
   </div>
 
-  <!-- MY ATTENDANCE (read-only, admin-marked) -->
+  <!-- MY ATTENDANCE (read-only, admin-marked, grouped by month) -->
   <div id="view-myAttendance" class="hidden">
     <button class="back-link" data-back>← Dashboard</button>
+    <h2 class="view-title">My Attendance</h2>
+    <p class="view-subtitle">Marked by the school admin. Shown by month, with the time it was recorded.</p>
     <div class="card">
-      <div class="card-head" style="font-weight:700; margin-bottom:6px;">My Attendance (admin ne lagayi)</div>
       <div id="myAttList"><div class="center-note">Loading…</div></div>
     </div>
   </div>
@@ -94,8 +119,9 @@
   <!-- NOTIFICATIONS -->
   <div id="view-notifications" class="hidden">
     <button class="back-link" data-back>← Dashboard</button>
+    <h2 class="view-title">Notifications</h2>
     <div class="card">
-      <div id="notifList"><div class="center-note">Koi notification nahi.</div></div>
+      <div id="notifList"><div class="center-note">No notifications yet.</div></div>
     </div>
   </div>
 </div>
@@ -150,11 +176,11 @@ const loginScreen = $('loginScreen'), appScreen = $('appScreen');
 $('loginBtn').addEventListener('click', async () => {
   $('loginError').style.display = 'none';
   const email = $('email').value.trim(), pass = $('password').value;
-  if (!email || !pass) { showLoginError('Email aur password dono likhein.'); return; }
+  if (!email || !pass) { showLoginError('Please enter both email and password.'); return; }
   $('loginBtn').disabled = true; $('loginBtn').textContent = 'Logging in…';
   try { await signInWithEmailAndPassword(auth, email, pass); }
-  catch (e) { showLoginError('Login nahi ho saka — email/password check karein.'); }
-  finally { $('loginBtn').disabled = false; $('loginBtn').textContent = 'Login'; }
+  catch (e) { showLoginError('Login failed — please check your email and password.'); }
+  finally { $('loginBtn').disabled = false; $('loginBtn').textContent = 'Log In'; }
 });
 function showLoginError(msg){ $('loginError').textContent = msg; $('loginError').style.display = 'block'; }
 $('logoutBtn').addEventListener('click', () => signOut(auth));
@@ -178,20 +204,24 @@ let students = [];
 let statusMap = {};
 
 function todayStr(){ return new Date().toISOString().slice(0,10); }
+function initials(name){
+  return (name || '').trim().split(/\s+/).slice(0,2).map(w => w[0] || '').join('').toUpperCase() || '?';
+}
 
 async function loadTeacherAndRoster(uid){
   const teacherSnap = await getDoc(doc(dbx, 'teachers', uid));
   if (!teacherSnap.exists()) {
-    $('rosterList').innerHTML = '<div class="center-note">Aapka teacher profile abhi set up nahi hua. School admin se rabta karein.</div>';
+    $('rosterList').innerHTML = '<div class="center-note">Your teacher profile has not been set up yet. Please contact the school admin.</div>';
     return;
   }
   const t = teacherSnap.data();
   currentTeacher = { uid, name: t.name || '', classId: t.classId };
   $('teacherName').textContent = currentTeacher.name;
+  $('teacherAvatar').textContent = initials(currentTeacher.name);
 
   const classSnap = await getDoc(doc(dbx, 'classes', t.classId));
   currentClass = classSnap.exists() ? { id: t.classId, ...classSnap.data() } : { id: t.classId, className: '' };
-  $('teacherClass').textContent = `${currentClass.className || ''} ${currentClass.section ? '- ' + currentClass.section : ''}`.trim();
+  $('teacherClass').textContent = `Class ${currentClass.className || ''} ${currentClass.section ? '- ' + currentClass.section : ''}`.trim();
 
   const q = query(collection(dbx, 'students'), where('classId', '==', t.classId));
   const snap = await getDocs(q);
@@ -228,15 +258,15 @@ function updateWindowBanner(){
   const el = $('windowBanner');
   el.className = 'window-banner ' + (open ? 'window-open' : 'window-closed');
   el.textContent = open
-    ? `🟢 Attendance window open (${windowLabel()}) — ab attendance laga sakte hain.`
-    : `🔒 Attendance sirf ${windowLabel()} ke darmiyan lagayi ja sakti hai. Is waqt band hai.`;
+    ? `🟢 Attendance window is open (${windowLabel()}) — you can mark attendance now.`
+    : `🔒 Attendance can only be marked between ${windowLabel()}. It is currently closed.`;
   $('submitBtn').disabled = !open;
 }
 setInterval(updateWindowBanner, 30000);
 
 function renderRoster(){
   const list = $('rosterList');
-  if (!students.length) { list.innerHTML = '<div class="center-note">Is class mein koi student registered nahi hai.</div>'; return; }
+  if (!students.length) { list.innerHTML = '<div class="center-note">No students are registered in this class.</div>'; return; }
   list.innerHTML = students.map(s => {
     const st = statusMap[s.id] || 'present';
     const btn = (val, label) => `<button class="status-btn ${st===val?'active-'+val:''}" data-id="${s.id}" data-val="${val}">${label}</button>`;
@@ -270,7 +300,7 @@ $('submitBtn').addEventListener('click', async () => {
     });
     $('successNote').classList.remove('hidden');
   } catch (e) {
-    $('submitError').textContent = 'Save nahi ho saka. Agar window (7:00–8:30) khatam ho chuki hai to yeh expected hai. Warna internet check karein.';
+    $('submitError').textContent = 'Could not save. If the window (7:00–8:30 AM) has closed, this is expected — otherwise, check your internet connection.';
     $('submitError').style.display = 'block';
   } finally {
     $('submitBtn').textContent = "Submit Today's Attendance"; $('submitBtn').disabled = !withinWindowNow();
@@ -282,7 +312,7 @@ $('sendComplaintBtn').addEventListener('click', async () => {
   $('complaintError').style.display = 'none';
   const studentId = $('complaintStudent').value;
   const text = $('complaintText').value.trim();
-  if (!studentId || !text) { $('complaintError').textContent = 'Student aur complaint dono likhein.'; $('complaintError').style.display = 'block'; return; }
+  if (!studentId || !text) { $('complaintError').textContent = 'Please select a student and write your complaint.'; $('complaintError').style.display = 'block'; return; }
   const student = students.find(s => s.id === studentId);
   const btn = $('sendComplaintBtn'); btn.disabled = true; btn.textContent = 'Sending…';
   try {
@@ -294,7 +324,7 @@ $('sendComplaintBtn').addEventListener('click', async () => {
     $('complaintText').value = ''; $('complaintStudent').value = '';
     loadComplaints();
   } catch (e) {
-    $('complaintError').textContent = 'Bheja nahi ja saka — internet check karein.'; $('complaintError').style.display = 'block';
+    $('complaintError').textContent = 'Could not send — please check your internet connection.'; $('complaintError').style.display = 'block';
   } finally { btn.disabled = false; btn.textContent = 'Send to Admin'; }
 });
 
@@ -302,7 +332,7 @@ async function loadComplaints(){
   const q = query(collection(dbx, 'complaints'), where('createdByUid', '==', currentTeacher.uid), orderBy('createdAt', 'desc'));
   const snap = await getDocs(q);
   const el = $('complaintsList');
-  if (snap.empty) { el.innerHTML = '<div class="center-note">Abhi tak koi complaint nahi bheji.</div>'; return; }
+  if (snap.empty) { el.innerHTML = '<div class="center-note">You haven\'t sent any complaints yet.</div>'; return; }
   el.innerHTML = snap.docs.map(d => {
     const c = d.data();
     const when = c.createdAt && c.createdAt.toDate ? c.createdAt.toDate().toLocaleDateString() : '';
@@ -311,17 +341,54 @@ async function loadComplaints(){
   }).join('');
 }
 
-// ---------------- My Attendance (read-only) ----------------
+// ---------------- My Attendance (read-only, grouped by month) ----------------
+function formatTime12h(t){
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  if (Number.isNaN(h)) return '';
+  const period = h < 12 ? 'AM' : 'PM';
+  const h12 = ((h % 12) || 12);
+  return `${h12}:${String(m || 0).padStart(2,'0')} ${period}`;
+}
+function monthLabelFromDate(dateStr){
+  const d = new Date(dateStr + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return 'Unknown';
+  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
 async function loadMyAttendance(){
   const el = $('myAttList');
   const q = query(collection(dbx, 'teacherAttendance'), where('teacherUid', '==', currentTeacher.uid), orderBy('date', 'desc'));
   const snap = await getDocs(q);
-  if (snap.empty) { el.innerHTML = '<div class="center-note">Abhi koi record nahi.</div>'; return; }
-  const pillClass = { present: 'pill-present', absent: 'pill-absent', leave: 'pill-leave' };
-  el.innerHTML = snap.docs.slice(0, 31).map(d => {
+  if (snap.empty) { el.innerHTML = '<div class="center-note">No attendance records yet.</div>'; return; }
+
+  // Only Present / Absent are shown here (the school records the teacher's
+  // own attendance as one of these two, along with the time it was marked).
+  const groups = new Map(); // "July 2026" -> [{date, status, time}]
+  snap.docs.forEach(d => {
     const r = d.data();
-    return `<div class="att-day-row"><span>${r.date}</span><span class="status-pill ${pillClass[r.status]||''}">${r.status}</span></div>`;
-  }).join('');
+    const label = monthLabelFromDate(r.date);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(r);
+  });
+
+  let html = '';
+  for (const [monthLabel, rows] of groups) {
+    const presentCount = rows.filter(r => r.status === 'present').length;
+    const absentCount = rows.filter(r => r.status === 'absent').length;
+    html += `<div class="month-group">
+      <div class="month-head">
+        <span>${monthLabel}</span>
+        <span class="month-tally"><span class="tally-present">${presentCount}P</span> · <span class="tally-absent">${absentCount}A</span></span>
+      </div>`;
+    html += rows.map(r => `
+      <div class="att-day-row">
+        <span class="att-date">${r.date}</span>
+        <span class="att-time">${formatTime12h(r.time)}</span>
+        <span class="status-pill ${r.status === 'present' ? 'pill-present' : 'pill-absent'}">${r.status === 'present' ? 'Present' : 'Absent'}</span>
+      </div>`).join('');
+    html += `</div>`;
+  }
+  el.innerHTML = html;
 }
 
 // ---------------- Notifications (salary popups etc.) ----------------
@@ -329,18 +396,18 @@ async function loadNotifications(markSeen){
   const q = query(collection(dbx, 'notifications'), where('teacherUid', '==', currentTeacher.uid), orderBy('createdAt', 'desc'));
   const snap = await getDocs(q);
   const el = $('notifList');
-  if (snap.empty) { el.innerHTML = '<div class="center-note">Koi notification nahi.</div>'; $('notifDot').textContent=''; return; }
+  if (snap.empty) { el.innerHTML = '<div class="center-note">No notifications yet.</div>'; $('notifDot').textContent = "You're all caught up"; return; }
   el.innerHTML = snap.docs.map(d => {
     const n = d.data();
     const when = n.createdAt && n.createdAt.toDate ? n.createdAt.toDate().toLocaleString() : '';
-    return `<div class="complaint-item"><b>${n.title || 'Notification'}</b><div>${n.message || ''}</div><div class="meta">${when}</div></div>`;
+    return `<div class="complaint-item"><b>${n.type === 'salary' ? '💰 ' : '🔔 '}${n.title || 'Notification'}</b><div>${n.message || ''}</div><div class="meta">${when}</div></div>`;
   }).join('');
 
   const unread = snap.docs.filter(d => !d.data().read);
-  $('notifDot').textContent = unread.length ? ` (${unread.length})` : '';
+  $('notifDot').textContent = unread.length ? `${unread.length} new` : "You're all caught up";
   if (markSeen) {
     for (const d of unread) await updateDoc(doc(dbx, 'notifications', d.id), { read: true });
-    if (unread.length) $('notifDot').textContent = '';
+    if (unread.length) $('notifDot').textContent = "You're all caught up";
   }
 }
 
@@ -348,8 +415,8 @@ async function loadNotifications(markSeen){
 async function checkForNewNotifPopup(){
   const q = query(collection(dbx, 'notifications'), where('teacherUid', '==', currentTeacher.uid), where('read', '==', false), orderBy('createdAt', 'desc'));
   const snap = await getDocs(q);
-  if (snap.empty) { $('notifDot').textContent = ''; return; }
-  $('notifDot').textContent = ` (${snap.size})`;
+  if (snap.empty) { $('notifDot').textContent = "You're all caught up"; return; }
+  $('notifDot').textContent = `${snap.size} new`;
   const n = snap.docs[0].data();
   $('notifModalEmoji').textContent = n.type === 'salary' ? '💰' : '🔔';
   $('notifModalTitle').textContent = n.title || 'Notification';

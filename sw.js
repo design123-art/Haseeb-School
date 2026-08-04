@@ -1,4 +1,4 @@
-const CACHE = 'hs-attendance-v1';
+const CACHE = 'hs-attendance-v2';
 const SHELL = ['./', './index.html', './style.css', './manifest.json',
   './icon-192.png', './icon-512.png'];
 
