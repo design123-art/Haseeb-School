@@ -232,6 +232,7 @@ function showView(name){
   ['dashboard','attendance','complaints','myAttendance','notifications'].forEach(v => {
     $('view-' + v).classList.toggle('hidden', v !== name);
   });
+  if (name === 'attendance') updateWindowBanner();
   if (name === 'complaints') loadComplaints();
   if (name === 'myAttendance') loadMyAttendance();
   if (name === 'notifications') loadNotifications(true);
@@ -333,7 +334,17 @@ async function setActiveClass(classId){
 }
 
 // ---------------- Student attendance ----------------
-const WIN = window.ATTENDANCE_WINDOW || { startHour:7, startMinute:0, endHour:8, endMinute:30 };
+const WIN = window.ATTENDANCE_WINDOW || { startHour:7, startMinute:0, endHour:12, endMinute:0 };
+let teacherPresentToday = null; // null = not checked yet, true/false after checkTeacherPresentToday()
+
+async function checkTeacherPresentToday(){
+  if (!currentTeacher || !currentTeacher.staffId) { teacherPresentToday = false; return; }
+  try {
+    const snap = await getDoc(doc(dbx, 'teacherAttendance', `tatt_${currentTeacher.staffId}_${todayStr()}`));
+    teacherPresentToday = snap.exists() && snap.data().status === 'present';
+  } catch (e) { teacherPresentToday = false; }
+}
+
 function withinWindowNow(){
   const now = new Date(); const mins = now.getHours()*60 + now.getMinutes();
   return mins >= (WIN.startHour*60+WIN.startMinute) && mins <= (WIN.endHour*60+WIN.endMinute);
@@ -343,8 +354,14 @@ function windowLabel(){
   return `${p(WIN.startHour, WIN.startMinute)} – ${p(WIN.endHour, WIN.endMinute)}`;
 }
 function updateWindowBanner(){
-  const open = withinWindowNow();
   const el = $('windowBanner');
+  if (teacherPresentToday === false) {
+    el.className = 'window-banner window-closed';
+    el.textContent = `🔒 Your own attendance isn't marked "Present" for today, so you can't mark student attendance. Please contact the school admin.`;
+    $('submitBtn').disabled = true;
+    return;
+  }
+  const open = withinWindowNow();
   el.className = 'window-banner ' + (open ? 'window-open' : 'window-closed');
   el.textContent = open
     ? `🟢 Attendance window is open (${windowLabel()}) — you can mark attendance now.`
@@ -376,6 +393,7 @@ function updateSummary(){
 
 $('submitBtn').addEventListener('click', async () => {
   $('submitError').style.display = 'none'; $('successNote').classList.add('hidden');
+  if (teacherPresentToday === false) { updateWindowBanner(); return; }
   if (!withinWindowNow()) { updateWindowBanner(); return; }
   $('submitBtn').disabled = true; $('submitBtn').textContent = 'Submitting…';
   const records = {};
@@ -389,10 +407,12 @@ $('submitBtn').addEventListener('click', async () => {
     });
     $('successNote').classList.remove('hidden');
   } catch (e) {
-    $('submitError').textContent = 'Could not save. If the window (7:00–8:30 AM) has closed, this is expected — otherwise, check your internet connection.';
+    $('submitError').textContent = teacherPresentToday === false
+      ? 'Could not save — your own attendance isn\'t marked "Present" for today.'
+      : `Could not save. If the window (${windowLabel()}) has closed, this is expected — otherwise, check your internet connection.`;
     $('submitError').style.display = 'block';
   } finally {
-    $('submitBtn').textContent = "Submit Today's Attendance"; $('submitBtn').disabled = !withinWindowNow();
+    $('submitBtn').textContent = "Submit Today's Attendance"; $('submitBtn').disabled = !withinWindowNow() || teacherPresentToday === false;
   }
 });
 
@@ -542,8 +562,10 @@ $('notifModalClose').addEventListener('click', () => $('notifModal').classList.a
 onAuthStateChanged(auth, async (user) => {
   if (user) {
     loginScreen.classList.add('hidden'); appScreen.classList.remove('hidden');
-    showView('dashboard'); updateWindowBanner();
+    showView('dashboard');
     await loadTeacherAndRoster(user.uid);
+    await checkTeacherPresentToday();
+    updateWindowBanner();
     await checkForNewNotifPopup();
   } else {
     appScreen.classList.add('hidden'); loginScreen.classList.remove('hidden');
