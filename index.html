@@ -28,7 +28,7 @@
     <div class="error-box" id="loginError"></div>
   </div>
   <button class="btn btn-outline hidden" id="installBtn" style="margin-top:14px;">📲 Install App (Add to Home Screen)</button>
-  <div class="center-note" id="installHint">You can also install this from your browser menu → "Add to Home Screen".</div>
+  <div id="installFallback"></div>
 </div>
 
 <!-- APP SHELL -->
@@ -39,6 +39,7 @@
       <div>
         <div class="topbar-name" id="teacherName">—</div>
         <div class="who" id="teacherClass">—</div>
+        <select class="who hidden" id="classSwitcher" style="margin-top:4px;padding:4px 8px;width:auto;border-radius:8px;"></select>
       </div>
     </div>
     <button class="logout" id="logoutBtn">Logout</button>
@@ -74,6 +75,7 @@
   <div id="view-attendance" class="hidden">
     <button class="back-link" data-back>← Dashboard</button>
     <h2 class="view-title">Class Attendance</h2>
+    <p class="view-subtitle" id="attClassLabel"></p>
     <div class="window-banner" id="windowBanner">Checking attendance window…</div>
     <div class="summary-strip">
       <div class="chip chip-present"><b id="sumPresent">0</b><small>Present</small></div>
@@ -81,7 +83,7 @@
       <div class="chip chip-leave"><b id="sumLeave">0</b><small>Leave</small></div>
     </div>
     <div class="card" style="padding:8px 16px;">
-      <div id="rosterList"><div class="center-note">Loading roster…</div></div>
+      <div id="rosterList"><div class="skel" style="width:92%"></div><div class="skel" style="width:78%"></div><div class="skel" style="width:85%"></div><div class="skel" style="width:65%"></div></div>
     </div>
     <button class="btn btn-primary" id="submitBtn" disabled>Submit Today's Attendance</button>
     <div class="error-box" id="submitError"></div>
@@ -102,7 +104,7 @@
     </div>
     <div class="card" style="margin-top:14px;">
       <div class="card-head">Your Recent Complaints</div>
-      <div id="complaintsList"><div class="center-note">Loading…</div></div>
+      <div id="complaintsList"><div class="skel" style="width:92%"></div><div class="skel" style="width:78%"></div><div class="skel" style="width:85%"></div><div class="skel" style="width:65%"></div></div>
     </div>
   </div>
 
@@ -112,7 +114,7 @@
     <h2 class="view-title">My Attendance</h2>
     <p class="view-subtitle">Marked by the school admin. Shown by month, with the time it was recorded.</p>
     <div class="card">
-      <div id="myAttList"><div class="center-note">Loading…</div></div>
+      <div id="myAttList"><div class="skel" style="width:92%"></div><div class="skel" style="width:78%"></div><div class="skel" style="width:85%"></div><div class="skel" style="width:65%"></div></div>
     </div>
   </div>
 
@@ -156,11 +158,51 @@ const $ = id => document.getElementById(id);
 
 // ---------------- One-tap install (Android/Chrome) ----------------
 let deferredInstallPrompt = null;
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isFileProtocol = location.protocol === 'file:';
+
+function renderInstallFallback(){
+  const el = $('installFallback');
+  if (isStandalone) { el.innerHTML = ''; return; }
+
+  if (isFileProtocol) {
+    el.innerHTML = `<div class="install-banner">
+      <b>⚠️ Open the real website link to install</b>
+      <p>This copy was opened as a local file, so installing to your home screen (and working offline) isn't
+      available yet. Ask the admin for the actual website link (e.g. a github.io address) and open <b>that</b>
+      in your browser instead — the Install option will then appear here automatically.</p>
+    </div>`;
+    return;
+  }
+
+  if (isIOS) {
+    el.innerHTML = `<div class="install-banner">
+      <b>📲 Add to your Home Screen</b>
+      <p>iPhone/iPad don't show an install button automatically — just a couple of taps in Safari:</p>
+      <ol class="steps">
+        <li>Tap the <b>Share</b> icon (square with an arrow) at the bottom of Safari</li>
+        <li>Scroll down and tap <b>Add to Home Screen</b></li>
+        <li>Tap <b>Add</b> in the top-right corner</li>
+      </ol>
+    </div>`;
+    return;
+  }
+
+  // Android/desktop Chrome — beforeinstallprompt just hasn't fired yet.
+  el.innerHTML = `<div class="install-banner">
+    <b>📲 Install this app</b>
+    <p>Look for <b>Install app</b> in your browser's menu (⋮ top-right), or open this page a couple more times —
+    Chrome shows the Install option here automatically once it does.</p>
+  </div>`;
+}
+renderInstallFallback();
+
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredInstallPrompt = e;
   $('installBtn').classList.remove('hidden');
-  $('installHint').classList.add('hidden');
+  $('installFallback').innerHTML = '';
 });
 $('installBtn').addEventListener('click', async () => {
   if (!deferredInstallPrompt) return;
@@ -169,7 +211,7 @@ $('installBtn').addEventListener('click', async () => {
   deferredInstallPrompt = null;
   $('installBtn').classList.add('hidden');
 });
-window.addEventListener('appinstalled', () => { $('installBtn').classList.add('hidden'); });
+window.addEventListener('appinstalled', () => { $('installBtn').classList.add('hidden'); $('installFallback').innerHTML = ''; });
 const loginScreen = $('loginScreen'), appScreen = $('appScreen');
 
 // ---------------- Login ----------------
@@ -198,10 +240,20 @@ document.querySelectorAll('.tile').forEach(t => t.addEventListener('click', () =
 document.querySelectorAll('[data-back]').forEach(b => b.addEventListener('click', () => showView('dashboard')));
 
 // ---------------- Shared teacher/class/roster state ----------------
-let currentTeacher = null; // {uid, name, classId}
+let currentTeacher = null; // {uid, name, role, classId}
 let currentClass = null;
+let currentClassId = null;
+let accessibleClasses = []; // for Incharge roles: every class in their group
 let students = [];
 let statusMap = {};
+
+const ROLE_LABELS = {
+  teacher: 'Class Teacher',
+  admin_incharge: 'Admin Incharge',
+  montessori_incharge: 'Montessori Incharge',
+  primary_incharge: 'Primary Incharge',
+  secondary_incharge: 'Secondary Incharge'
+};
 
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function initials(name){
@@ -215,20 +267,56 @@ async function loadTeacherAndRoster(uid){
     return;
   }
   const t = teacherSnap.data();
-  currentTeacher = { uid, name: t.name || '', classId: t.classId };
+  const role = t.role || 'teacher';
+  currentTeacher = { uid, name: t.name || '', role, classId: t.classId, staffId: t.staffId };
   $('teacherName').textContent = currentTeacher.name;
   $('teacherAvatar').textContent = initials(currentTeacher.name);
 
-  const classSnap = await getDoc(doc(dbx, 'classes', t.classId));
-  currentClass = classSnap.exists() ? { id: t.classId, ...classSnap.data() } : { id: t.classId, className: '' };
-  $('teacherClass').textContent = `Class ${currentClass.className || ''} ${currentClass.section ? '- ' + currentClass.section : ''}`.trim();
+  if (role === 'teacher') {
+    // Normal class teacher — same as before, tied to one class, no switcher.
+    $('classSwitcher').classList.add('hidden');
+    $('teacherClass').classList.remove('hidden');
+    await setActiveClass(t.classId);
+    return;
+  }
 
-  const q = query(collection(dbx, 'students'), where('classId', '==', t.classId));
+  // Incharge role — covers a whole group of classes, picked with a dropdown.
+  $('teacherClass').classList.add('hidden');
+  const category = role.replace('_incharge', ''); // montessori | primary | secondary | admin
+  const classesSnap = role === 'admin_incharge'
+    ? await getDocs(collection(dbx, 'classes'))
+    : await getDocs(query(collection(dbx, 'classes'), where('category', '==', category)));
+  accessibleClasses = classesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.className || '').localeCompare(b.className || '', undefined, { numeric: true }));
+
+  if (!accessibleClasses.length) {
+    $('rosterList').innerHTML = `<div class="center-note">No classes are tagged for ${ROLE_LABELS[role] || 'your role'} yet. Ask the admin to push classes again from the desktop software.</div>`;
+    return;
+  }
+  const sw = $('classSwitcher');
+  sw.classList.remove('hidden');
+  sw.innerHTML = accessibleClasses.map(c => `<option value="${c.id}">${ROLE_LABELS[role]} — ${c.className || ''}${c.section ? ' - ' + c.section : ''}</option>`).join('');
+  await setActiveClass(accessibleClasses[0].id);
+}
+
+$('classSwitcher').addEventListener('change', () => setActiveClass($('classSwitcher').value));
+
+// Loads roster/students/today's-attendance-state for one specific class —
+// called on login, and again every time an Incharge switches class.
+async function setActiveClass(classId){
+  currentClassId = classId;
+  const classSnap = await getDoc(doc(dbx, 'classes', classId));
+  currentClass = classSnap.exists() ? { id: classId, ...classSnap.data() } : { id: classId, className: '' };
+  if (currentTeacher.role === 'teacher') {
+    $('teacherClass').textContent = `Class ${currentClass.className || ''} ${currentClass.section ? '- ' + currentClass.section : ''}`.trim();
+  }
+
+  const q = query(collection(dbx, 'students'), where('classId', '==', classId));
   const snap = await getDocs(q);
   students = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   statusMap = {};
 
-  const attId = `att_${t.classId}_${todayStr()}`;
+  const attId = `att_${classId}_${todayStr()}`;
   const existing = await getDoc(doc(dbx, 'attendance', attId));
   if (existing.exists()) {
     const recs = existing.data().records || {};
@@ -237,6 +325,7 @@ async function loadTeacherAndRoster(uid){
 
   renderRoster();
   updateSummary();
+  $('attClassLabel').textContent = `Class ${currentClass.className || ''}${currentClass.section ? ' - ' + currentClass.section : ''}`.trim();
 
   const sel = $('complaintStudent');
   sel.innerHTML = '<option value="">Select student…</option>' +
@@ -291,10 +380,10 @@ $('submitBtn').addEventListener('click', async () => {
   $('submitBtn').disabled = true; $('submitBtn').textContent = 'Submitting…';
   const records = {};
   students.forEach(s => { records[s.id] = { name: s.studentName || s.name || '', status: statusMap[s.id] || 'present' }; });
-  const attId = `att_${currentTeacher.classId}_${todayStr()}`;
+  const attId = `att_${currentClassId}_${todayStr()}`;
   try {
     await setDoc(doc(dbx, 'attendance', attId), {
-      classId: currentTeacher.classId, className: currentClass.className || '', section: currentClass.section || '',
+      classId: currentClassId, className: currentClass.className || '', section: currentClass.section || '',
       date: todayStr(), records, source: 'mobile_teacher',
       markedBy: currentTeacher.name, markedByUid: currentTeacher.uid, updatedAt: serverTimestamp()
     });
@@ -317,7 +406,7 @@ $('sendComplaintBtn').addEventListener('click', async () => {
   const btn = $('sendComplaintBtn'); btn.disabled = true; btn.textContent = 'Sending…';
   try {
     await addDoc(collection(dbx, 'complaints'), {
-      classId: currentTeacher.classId, studentId, studentName: student ? (student.studentName || student.name) : '',
+      classId: currentClassId, studentId, studentName: student ? (student.studentName || student.name) : '',
       text, createdByUid: currentTeacher.uid, createdByName: currentTeacher.name,
       status: 'open', createdAt: serverTimestamp()
     });
@@ -341,7 +430,7 @@ async function loadComplaints(){
   }).join('');
 }
 
-// ---------------- My Attendance (read-only, grouped by month) ----------------
+// ---------------- My Attendance (read-only, monthly calendar sheet) ----------------
 function formatTime12h(t){
   if (!t) return '';
   const [h, m] = t.split(':').map(Number);
@@ -355,39 +444,63 @@ function monthLabelFromDate(dateStr){
   if (Number.isNaN(d.getTime())) return 'Unknown';
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
+function daysInMonth(year, monthIndex){ return new Date(year, monthIndex + 1, 0).getDate(); }
+
 async function loadMyAttendance(){
   const el = $('myAttList');
-  const q = query(collection(dbx, 'teacherAttendance'), where('teacherUid', '==', currentTeacher.uid), orderBy('date', 'desc'));
+  const q = query(collection(dbx, 'teacherAttendance'), where('staffId', '==', currentTeacher.staffId), orderBy('date', 'desc'));
   const snap = await getDocs(q);
   if (snap.empty) { el.innerHTML = '<div class="center-note">No attendance records yet.</div>'; return; }
 
-  // Only Present / Absent are shown here (the school records the teacher's
-  // own attendance as one of these two, along with the time it was marked).
-  const groups = new Map(); // "July 2026" -> [{date, status, time}]
+  // One sheet per month, laid out like a real attendance register —
+  // a calendar grid with each day colored by Present/Absent.
+  const groups = new Map(); // "2026-07" -> { label, year, month, byDay: {14: {status,time}} }
   snap.docs.forEach(d => {
     const r = d.data();
-    const label = monthLabelFromDate(r.date);
-    if (!groups.has(label)) groups.set(label, []);
-    groups.get(label).push(r);
+    const dt = new Date(r.date + 'T00:00:00');
+    if (Number.isNaN(dt.getTime())) return;
+    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+    if (!groups.has(key)) groups.set(key, { label: monthLabelFromDate(r.date), year: dt.getFullYear(), month: dt.getMonth(), byDay: {} });
+    groups.get(key).byDay[dt.getDate()] = { status: r.status, time: r.time };
   });
 
+  const DOW = ['S','M','T','W','T','F','S'];
   let html = '';
-  for (const [monthLabel, rows] of groups) {
-    const presentCount = rows.filter(r => r.status === 'present').length;
-    const absentCount = rows.filter(r => r.status === 'absent').length;
-    html += `<div class="month-group">
+  for (const [, g] of groups) {
+    const total = daysInMonth(g.year, g.month);
+    const firstDow = new Date(g.year, g.month, 1).getDay();
+    let presentCount = 0, absentCount = 0;
+
+    let cells = '';
+    for (let i = 0; i < firstDow; i++) cells += `<div class="cal-cell cal-empty"></div>`;
+    for (let day = 1; day <= total; day++) {
+      const rec = g.byDay[day];
+      let cls = 'cal-nodata';
+      let title = '';
+      if (rec) {
+        if (rec.status === 'present') { cls = 'cal-present'; presentCount++; }
+        else { cls = 'cal-absent'; absentCount++; }
+        title = ` title="${formatTime12h(rec.time)}"`;
+      }
+      cells += `<div class="cal-cell ${cls}"${title}><span>${day}</span></div>`;
+    }
+
+    html += `<div class="month-sheet">
       <div class="month-head">
-        <span>${monthLabel}</span>
+        <span>${g.label}</span>
         <span class="month-tally"><span class="tally-present">${presentCount}P</span> · <span class="tally-absent">${absentCount}A</span></span>
-      </div>`;
-    html += rows.map(r => `
-      <div class="att-day-row">
-        <span class="att-date">${r.date}</span>
-        <span class="att-time">${formatTime12h(r.time)}</span>
-        <span class="status-pill ${r.status === 'present' ? 'pill-present' : 'pill-absent'}">${r.status === 'present' ? 'Present' : 'Absent'}</span>
-      </div>`).join('');
-    html += `</div>`;
+      </div>
+      <div class="cal-grid">
+        ${DOW.map(d => `<div class="cal-dow">${d}</div>`).join('')}
+        ${cells}
+      </div>
+    </div>`;
   }
+  html += `<div class="cal-legend">
+    <span><span class="cal-dot" style="background:var(--success);"></span>Present</span>
+    <span><span class="cal-dot" style="background:var(--danger);"></span>Absent</span>
+    <span><span class="cal-dot" style="background:var(--surface-muted);border:1px solid var(--border);"></span>No record</span>
+  </div>`;
   el.innerHTML = html;
 }
 
@@ -404,7 +517,7 @@ async function loadNotifications(markSeen){
   }).join('');
 
   const unread = snap.docs.filter(d => !d.data().read);
-  $('notifDot').textContent = unread.length ? `${unread.length} new` : "You're all caught up";
+  $('notifDot').innerHTML = unread.length ? `<span class="notif-live-dot"></span>${unread.length} new` : "You're all caught up";
   if (markSeen) {
     for (const d of unread) await updateDoc(doc(dbx, 'notifications', d.id), { read: true });
     if (unread.length) $('notifDot').textContent = "You're all caught up";
@@ -416,7 +529,7 @@ async function checkForNewNotifPopup(){
   const q = query(collection(dbx, 'notifications'), where('teacherUid', '==', currentTeacher.uid), where('read', '==', false), orderBy('createdAt', 'desc'));
   const snap = await getDocs(q);
   if (snap.empty) { $('notifDot').textContent = "You're all caught up"; return; }
-  $('notifDot').textContent = `${snap.size} new`;
+  $('notifDot').innerHTML = `<span class="notif-live-dot"></span>${snap.size} new`;
   const n = snap.docs[0].data();
   $('notifModalEmoji').textContent = n.type === 'salary' ? '💰' : '🔔';
   $('notifModalTitle').textContent = n.title || 'Notification';
