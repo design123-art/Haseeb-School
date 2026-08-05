@@ -11,4 +11,4 @@ window.FIREBASE_CONFIG = {
 };
 
 // Attendance window shown to teachers (must match firestore.rules).
-window.ATTENDANCE_WINDOW = { startHour: 7, startMinute: 0, endHour: 12, endMinute: 0 };
+window.ATTENDANCE_WINDOW = { startHour: 7, startMinute: 0, endHour: 9, endMinute: 0 };

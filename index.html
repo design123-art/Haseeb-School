@@ -370,12 +370,19 @@ function windowLabel(){
   const p = (h,m) => `${((h%12)||12)}:${String(m).padStart(2,'0')} ${h<12?'AM':'PM'}`;
   return `${p(WIN.startHour, WIN.startMinute)} – ${p(WIN.endHour, WIN.endMinute)}`;
 }
+function isWindowExempt(){ return !!(currentTeacher && currentTeacher.role === 'admin_incharge'); }
 function updateWindowBanner(){
   const el = $('windowBanner');
   if (teacherPresentToday === false) {
     el.className = 'window-banner window-closed';
     el.textContent = `🔒 Your own attendance isn't marked "Present" for today, so you can't mark student attendance. Please contact the school admin.`;
     $('submitBtn').disabled = true;
+    return;
+  }
+  if (isWindowExempt()) {
+    el.className = 'window-banner window-open';
+    el.textContent = `🟢 As Admin Incharge, you can mark attendance any time.`;
+    $('submitBtn').disabled = false;
     return;
   }
   const open = withinWindowNow();
@@ -412,7 +419,7 @@ $('submitBtn').addEventListener('click', async () => {
   $('submitError').style.display = 'none'; $('successNote').classList.add('hidden');
   await checkTeacherPresentToday(); updateWindowBanner();
   if (teacherPresentToday === false) { return; }
-  if (!withinWindowNow()) { return; }
+  if (!isWindowExempt() && !withinWindowNow()) { return; }
   $('submitBtn').disabled = true; $('submitBtn').textContent = 'Submitting…';
   const records = {};
   students.forEach(s => { records[s.id] = { name: s.studentName || s.name || '', status: statusMap[s.id] || 'present' }; });
@@ -430,7 +437,7 @@ $('submitBtn').addEventListener('click', async () => {
       : `Could not save. If the window (${windowLabel()}) has closed, this is expected — otherwise, check your internet connection.`;
     $('submitError').style.display = 'block';
   } finally {
-    $('submitBtn').textContent = "Submit Today's Attendance"; $('submitBtn').disabled = !withinWindowNow() || teacherPresentToday === false;
+    $('submitBtn').textContent = "Submit Today's Attendance"; $('submitBtn').disabled = !(isWindowExempt() || withinWindowNow()) || teacherPresentToday === false;
   }
 });
 
@@ -532,11 +539,15 @@ async function loadMyAttendance(){
       let cls = 'cal-nodata';
       let title = '';
       if (rec) {
-        if (rec.status === 'present') { cls = 'cal-present'; presentCount++; }
-        else { cls = 'cal-absent'; absentCount++; }
+        if (rec.status === 'present') {
+          cls = 'cal-present';
+          if (rec.time && rec.time > '07:40') cls += ' cal-late';
+          presentCount++;
+        } else { cls = 'cal-absent'; absentCount++; }
         title = ` title="${formatTime12h(rec.time)}"`;
       }
-      cells += `<div class="cal-cell ${cls}"${title}><span>${day}</span></div>`;
+      const timeLabel = (rec && rec.status === 'present' && rec.time) ? `<small class="cal-time">${formatTime12h(rec.time)}</small>` : '';
+      cells += `<div class="cal-cell ${cls}"${title}><span>${day}</span>${timeLabel}</div>`;
     }
 
     html += `<div class="month-sheet">

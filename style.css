@@ -148,12 +148,14 @@ textarea{ min-height:90px; resize:vertical; }
 .month-sheet:last-child{ margin-bottom:0; }
 .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:5px; margin-top:8px; }
 .cal-dow{ text-align:center; font-size:10.5px; font-weight:700; color:var(--ink-muted); padding-bottom:2px; }
-.cal-cell{ aspect-ratio:1; border-radius:9px; display:flex; align-items:center; justify-content:center;
+.cal-cell{ aspect-ratio:1; border-radius:9px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
   font-size:12px; font-weight:700; background:var(--surface-muted); color:var(--ink-muted); }
 .cal-empty{ background:transparent; }
 .cal-nodata{ background:var(--surface-muted); color:var(--ink-muted); opacity:.5; }
 .cal-present{ background:var(--success); color:#fff; }
 .cal-absent{ background:var(--danger); color:#fff; }
+.cal-time{ font-size:8px; font-weight:800; line-height:1; opacity:.9; }
+.cal-late .cal-time{ color:#c0392b; background:#fff; border-radius:5px; padding:0 4px; opacity:1; }
 .cal-legend{ display:flex; gap:14px; margin:12px 2px 0; font-size:11.5px; color:var(--ink-muted); font-weight:600; }
 .cal-legend span{ display:inline-flex; align-items:center; gap:5px; }
 .cal-dot{ width:10px; height:10px; border-radius:4px; display:inline-block; }
