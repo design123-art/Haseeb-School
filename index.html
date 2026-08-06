@@ -351,24 +351,33 @@ async function setActiveClass(classId){
 }
 
 // ---------------- Student attendance ----------------
-const WIN = window.ATTENDANCE_WINDOW || { startHour:7, startMinute:0, endHour:12, endMinute:0 };
+const WIN = window.ATTENDANCE_WINDOW || { startHour:7, startMinute:0, endHour:9, endMinute:0 }; // normal class teachers
+const INCHARGE_WIN = { startHour:7, startMinute:0, endHour:12, endMinute:0 }; // montessori/primary/secondary incharges — wider, but not unlimited
+function activeWindow(){
+  const r = currentTeacher && currentTeacher.role;
+  if (r === 'montessori_incharge' || r === 'primary_incharge' || r === 'secondary_incharge') return INCHARGE_WIN;
+  return WIN;
+}
 let teacherPresentToday = null; // null = not checked yet, true/false after checkTeacherPresentToday()
 
 async function checkTeacherPresentToday(){
   if (!currentTeacher || !currentTeacher.staffId) { teacherPresentToday = false; return; }
   try {
     const snap = await getDoc(doc(dbx, 'teacherAttendance', `tatt_${currentTeacher.staffId}_${todayStr()}`));
+    // Must be EXPLICITLY marked "present" by admin. No record at all = treated as Absent (blocked).
     teacherPresentToday = snap.exists() && snap.data().status === 'present';
   } catch (e) { teacherPresentToday = false; }
 }
 
 function withinWindowNow(){
+  const w = activeWindow();
   const now = new Date(); const mins = now.getHours()*60 + now.getMinutes();
-  return mins >= (WIN.startHour*60+WIN.startMinute) && mins <= (WIN.endHour*60+WIN.endMinute);
+  return mins >= (w.startHour*60+w.startMinute) && mins <= (w.endHour*60+w.endMinute);
 }
 function windowLabel(){
+  const w = activeWindow();
   const p = (h,m) => `${((h%12)||12)}:${String(m).padStart(2,'0')} ${h<12?'AM':'PM'}`;
-  return `${p(WIN.startHour, WIN.startMinute)} – ${p(WIN.endHour, WIN.endMinute)}`;
+  return `${p(w.startHour, w.startMinute)} – ${p(w.endHour, w.endMinute)}`;
 }
 function isWindowExempt(){ return !!(currentTeacher && currentTeacher.role === 'admin_incharge'); }
 function updateWindowBanner(){
@@ -532,10 +541,13 @@ async function loadMyAttendance(){
     const firstDow = new Date(g.year, g.month, 1).getDay();
     let presentCount = 0, absentCount = 0;
 
+    const today = new Date(); today.setHours(0,0,0,0);
     let cells = '';
     for (let i = 0; i < firstDow; i++) cells += `<div class="cal-cell cal-empty"></div>`;
     for (let day = 1; day <= total; day++) {
       const rec = g.byDay[day];
+      const cellDate = new Date(g.year, g.month, day);
+      const isFuture = cellDate > today;
       let cls = 'cal-nodata';
       let title = '';
       if (rec) {
@@ -545,6 +557,10 @@ async function loadMyAttendance(){
           presentCount++;
         } else { cls = 'cal-absent'; absentCount++; }
         title = ` title="${formatTime12h(rec.time)}"`;
+      } else if (!isFuture) {
+        // No record at all for a day that's already happened → counts as Absent, same rule as marking attendance.
+        cls = 'cal-absent'; absentCount++;
+        title = ' title="No attendance was marked for you that day — treated as Absent"';
       }
       const timeLabel = (rec && rec.status === 'present' && rec.time) ? `<small class="cal-time">${formatTime12h(rec.time)}</small>` : '';
       cells += `<div class="cal-cell ${cls}"${title}><span>${day}</span>${timeLabel}</div>`;
