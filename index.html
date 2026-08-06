@@ -76,6 +76,7 @@
     <button class="back-link" data-back>← Dashboard</button>
     <h2 class="view-title">Class Attendance</h2>
     <p class="view-subtitle" id="attClassLabel"></p>
+    <p class="view-subtitle" id="attDateLabel" style="margin-top:-8px;"></p>
     <div class="window-banner" id="windowBanner">Checking attendance window…</div>
     <div class="summary-strip">
       <div class="chip chip-present"><b id="sumPresent">0</b><small>Present</small></div>
@@ -257,8 +258,36 @@ const ROLE_LABELS = {
 };
 
 function todayStr(){ return new Date().toISOString().slice(0,10); }
+function dayNameOf(dateStr){
+  const d = new Date(dateStr + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
 function initials(name){
   return (name || '').trim().split(/\s+/).slice(0,2).map(w => w[0] || '').join('').toUpperCase() || '?';
+}
+
+// ---------------- Off Days (holidays marked by the admin, shared with the desktop app) ----------------
+let offDaysMap = null; // dateStr -> label, once loaded; null until first fetched
+function isSundayStr(dateStr){
+  const d = new Date(dateStr + 'T00:00:00');
+  return !Number.isNaN(d.getTime()) && d.getDay() === 0;
+}
+function isOffDateStr(dateStr){ return isSundayStr(dateStr) || !!(offDaysMap && offDaysMap[dateStr]); }
+function offLabelFor(dateStr){
+  if (offDaysMap && offDaysMap[dateStr]) return offDaysMap[dateStr];
+  if (isSundayStr(dateStr)) return 'Sunday — Off';
+  return 'Off';
+}
+async function ensureOffDaysLoaded(){
+  if (offDaysMap !== null) return; // already loaded this session
+  try {
+    const snap = await getDocs(collection(dbx, 'offDays'));
+    offDaysMap = {};
+    snap.docs.forEach(d => { offDaysMap[d.id] = (d.data().label || 'Off'); });
+  } catch (e) {
+    offDaysMap = {}; // couldn't load holidays — Sunday-only detection still works
+  }
 }
 
 async function loadTeacherAndRoster(uid){
@@ -344,6 +373,10 @@ async function setActiveClass(classId){
   renderRoster();
   updateSummary();
   $('attClassLabel').textContent = `Class ${currentClass.className || ''}${currentClass.section ? ' - ' + currentClass.section : ''}`.trim();
+  $('attDateLabel').textContent = dayNameOf(todayStr());
+  await ensureOffDaysLoaded();
+  await checkTeacherPresentToday();
+  updateWindowBanner();
 
   const sel = $('complaintStudent');
   sel.innerHTML = '<option value="">Select student…</option>' +
@@ -380,6 +413,7 @@ function windowLabel(){
   return `${p(w.startHour, w.startMinute)} – ${p(w.endHour, w.endMinute)}`;
 }
 function isWindowExempt(){ return !!(currentTeacher && currentTeacher.role === 'admin_incharge'); }
+function isTodayOff(){ return isOffDateStr(todayStr()); }
 function updateWindowBanner(){
   const el = $('windowBanner');
   if (teacherPresentToday === false) {
@@ -388,9 +422,17 @@ function updateWindowBanner(){
     $('submitBtn').disabled = true;
     return;
   }
+  if (isTodayOff() && !isWindowExempt()) {
+    el.className = 'window-banner window-off';
+    el.textContent = `🏖️ Today is Off (${offLabelFor(todayStr())}) — there's no school, so attendance isn't needed. Only the Admin Incharge can mark attendance on an Off day.`;
+    $('submitBtn').disabled = true;
+    return;
+  }
   if (isWindowExempt()) {
     el.className = 'window-banner window-open';
-    el.textContent = `🟢 As Admin Incharge, you can mark attendance any time.`;
+    el.textContent = isTodayOff()
+      ? `🟢 As Admin Incharge, you can still mark attendance today even though it's marked Off (${offLabelFor(todayStr())}).`
+      : `🟢 As Admin Incharge, you can mark attendance any time.`;
     $('submitBtn').disabled = false;
     return;
   }
@@ -428,6 +470,7 @@ $('submitBtn').addEventListener('click', async () => {
   $('submitError').style.display = 'none'; $('successNote').classList.add('hidden');
   await checkTeacherPresentToday(); updateWindowBanner();
   if (teacherPresentToday === false) { return; }
+  if (isTodayOff() && !isWindowExempt()) { return; }
   if (!isWindowExempt() && !withinWindowNow()) { return; }
   $('submitBtn').disabled = true; $('submitBtn').textContent = 'Submitting…';
   const records = {};
@@ -446,7 +489,8 @@ $('submitBtn').addEventListener('click', async () => {
       : `Could not save. If the window (${windowLabel()}) has closed, this is expected — otherwise, check your internet connection.`;
     $('submitError').style.display = 'block';
   } finally {
-    $('submitBtn').textContent = "Submit Today's Attendance"; $('submitBtn').disabled = !(isWindowExempt() || withinWindowNow()) || teacherPresentToday === false;
+    $('submitBtn').textContent = "Submit Today's Attendance";
+    $('submitBtn').disabled = !(isWindowExempt() || withinWindowNow()) || teacherPresentToday === false || (isTodayOff() && !isWindowExempt());
   }
 });
 
@@ -475,14 +519,23 @@ async function loadComplaints(){
   const el = $('complaintsList');
   let snap;
   try {
-    const q = query(collection(dbx, 'complaints'), where('createdByUid', '==', currentTeacher.uid), orderBy('createdAt', 'desc'));
+    // No orderBy here on purpose — where()+orderBy() on different fields needs a
+    // Firestore composite index, and without it this query fails with a
+    // permission-looking error even when the internet connection is fine.
+    // Sorting is done client-side below instead.
+    const q = query(collection(dbx, 'complaints'), where('createdByUid', '==', currentTeacher.uid));
     snap = await getDocs(q);
   } catch (e) {
     el.innerHTML = '<div class="center-note">Could not load complaints — please check your internet connection and try again.</div>';
     return;
   }
   if (snap.empty) { el.innerHTML = '<div class="center-note">You haven\'t sent any complaints yet.</div>'; return; }
-  el.innerHTML = snap.docs.map(d => {
+  const docs = snap.docs.slice().sort((a, b) => {
+    const at = a.data().createdAt && a.data().createdAt.toDate ? a.data().createdAt.toDate().getTime() : 0;
+    const bt = b.data().createdAt && b.data().createdAt.toDate ? b.data().createdAt.toDate().getTime() : 0;
+    return bt - at;
+  });
+  el.innerHTML = docs.map(d => {
     const c = d.data();
     const when = c.createdAt && c.createdAt.toDate ? c.createdAt.toDate().toLocaleDateString() : '';
     return `<div class="complaint-item"><b>${c.studentName || ''}</b><div>${c.text}</div>
@@ -514,12 +567,14 @@ async function loadMyAttendance(){
   }
   let snap;
   try {
-    const q = query(collection(dbx, 'teacherAttendance'), where('staffId', '==', currentTeacher.staffId), orderBy('date', 'desc'));
+    // No orderBy here on purpose — see note above about composite indexes.
+    const q = query(collection(dbx, 'teacherAttendance'), where('staffId', '==', currentTeacher.staffId));
     snap = await getDocs(q);
   } catch (e) {
     el.innerHTML = '<div class="center-note">Could not load your attendance — please check your internet connection and try again.</div>';
     return;
   }
+  await ensureOffDaysLoaded();
   if (snap.empty) { el.innerHTML = '<div class="center-note">No attendance records yet.</div>'; return; }
 
   // One sheet per month, laid out like a real attendance register —
@@ -548,9 +603,13 @@ async function loadMyAttendance(){
       const rec = g.byDay[day];
       const cellDate = new Date(g.year, g.month, day);
       const isFuture = cellDate > today;
+      const cellDateStr = `${g.year}-${String(g.month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
       let cls = 'cal-nodata';
       let title = '';
-      if (rec) {
+      if (isOffDateStr(cellDateStr)) {
+        cls = 'cal-off';
+        title = ` title="${offLabelFor(cellDateStr)}"`;
+      } else if (rec) {
         if (rec.status === 'present') {
           cls = 'cal-present';
           if (rec.time && rec.time > '07:40') cls += ' cal-late';
@@ -580,6 +639,7 @@ async function loadMyAttendance(){
   html += `<div class="cal-legend">
     <span><span class="cal-dot" style="background:var(--success);"></span>Present</span>
     <span><span class="cal-dot" style="background:var(--danger);"></span>Absent</span>
+    <span><span class="cal-dot" style="background:var(--blue-bg);border:1px solid var(--blue);"></span>Off (Sunday / Holiday)</span>
     <span><span class="cal-dot" style="background:var(--surface-muted);border:1px solid var(--border);"></span>No record</span>
   </div>`;
   el.innerHTML = html;
@@ -590,20 +650,26 @@ async function loadNotifications(markSeen){
   const el = $('notifList');
   let snap;
   try {
-    const q = query(collection(dbx, 'notifications'), where('teacherUid', '==', currentTeacher.uid), orderBy('createdAt', 'desc'));
+    // No orderBy here on purpose — see note above about composite indexes.
+    const q = query(collection(dbx, 'notifications'), where('teacherUid', '==', currentTeacher.uid));
     snap = await getDocs(q);
   } catch (e) {
     el.innerHTML = '<div class="center-note">Could not load notifications — please check your internet connection and try again.</div>';
     return;
   }
   if (snap.empty) { el.innerHTML = '<div class="center-note">No notifications yet.</div>'; $('notifDot').textContent = "You're all caught up"; return; }
-  el.innerHTML = snap.docs.map(d => {
+  const docs = snap.docs.slice().sort((a, b) => {
+    const at = a.data().createdAt && a.data().createdAt.toDate ? a.data().createdAt.toDate().getTime() : 0;
+    const bt = b.data().createdAt && b.data().createdAt.toDate ? b.data().createdAt.toDate().getTime() : 0;
+    return bt - at;
+  });
+  el.innerHTML = docs.map(d => {
     const n = d.data();
     const when = n.createdAt && n.createdAt.toDate ? n.createdAt.toDate().toLocaleString() : '';
     return `<div class="complaint-item"><b>${n.type === 'salary' ? '💰 ' : '🔔 '}${n.title || 'Notification'}</b><div>${n.message || ''}</div><div class="meta">${when}</div></div>`;
   }).join('');
 
-  const unread = snap.docs.filter(d => !d.data().read);
+  const unread = docs.filter(d => !d.data().read);
   $('notifDot').innerHTML = unread.length ? `<span class="notif-live-dot"></span>${unread.length} new` : "You're all caught up";
   if (markSeen) {
     for (const d of unread) await updateDoc(doc(dbx, 'notifications', d.id), { read: true });
@@ -615,12 +681,18 @@ async function loadNotifications(markSeen){
 async function checkForNewNotifPopup(){
   let snap;
   try {
-    const q = query(collection(dbx, 'notifications'), where('teacherUid', '==', currentTeacher.uid), where('read', '==', false), orderBy('createdAt', 'desc'));
+    // No orderBy here on purpose — see note above about composite indexes.
+    const q = query(collection(dbx, 'notifications'), where('teacherUid', '==', currentTeacher.uid), where('read', '==', false));
     snap = await getDocs(q);
   } catch (e) { return; }
   if (snap.empty) { $('notifDot').textContent = "You're all caught up"; return; }
-  $('notifDot').innerHTML = `<span class="notif-live-dot"></span>${snap.size} new`;
-  const n = snap.docs[0].data();
+  const docs = snap.docs.slice().sort((a, b) => {
+    const at = a.data().createdAt && a.data().createdAt.toDate ? a.data().createdAt.toDate().getTime() : 0;
+    const bt = b.data().createdAt && b.data().createdAt.toDate ? b.data().createdAt.toDate().getTime() : 0;
+    return bt - at;
+  });
+  $('notifDot').innerHTML = `<span class="notif-live-dot"></span>${docs.length} new`;
+  const n = docs[0].data();
   $('notifModalEmoji').textContent = n.type === 'salary' ? '💰' : '🔔';
   $('notifModalTitle').textContent = n.title || 'Notification';
   $('notifModalBody').textContent = n.message || '';
