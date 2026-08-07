@@ -53,6 +53,11 @@
         <b>Class Attendance</b>
         <small>Mark today's attendance</small>
       </div>
+      <div class="tile" data-view="studentRegister">
+        <span class="tile-icon tile-icon-blue">📘</span>
+        <b>Student Register</b>
+        <small>Monthly class attendance</small>
+      </div>
       <div class="tile" data-view="complaints">
         <span class="tile-icon tile-icon-amber">📝</span>
         <b>Student Complaint</b>
@@ -89,6 +94,28 @@
     <button class="btn btn-primary" id="submitBtn" disabled>Submit Today's Attendance</button>
     <div class="error-box" id="submitError"></div>
     <div id="successNote" class="success-note hidden">✅ Attendance submitted for today.</div>
+  </div>
+
+  <!-- STUDENT ATTENDANCE REGISTER (read-only, monthly, whole class) -->
+  <div id="view-studentRegister" class="hidden">
+    <button class="back-link" data-back>← Dashboard</button>
+    <h2 class="view-title">Student Attendance Register</h2>
+    <p class="view-subtitle" id="srClassLabel"></p>
+    <div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <label for="srMonthPicker" style="font-size:12.5px;font-weight:700;color:var(--ink-muted);">Month</label>
+      <input type="month" id="srMonthPicker" style="flex:1;min-width:140px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:13.5px;">
+    </div>
+    <p class="view-subtitle" style="margin-top:10px;">Tap a student to see their day-by-day calendar for the month.</p>
+    <div class="card" style="padding:8px 16px;">
+      <div id="srList"><div class="skel" style="width:92%"></div><div class="skel" style="width:78%"></div><div class="skel" style="width:85%"></div></div>
+    </div>
+    <div class="cal-legend">
+      <span><span class="cal-dot" style="background:var(--success);"></span>Present</span>
+      <span><span class="cal-dot" style="background:var(--danger);"></span>Absent</span>
+      <span><span class="cal-dot" style="background:var(--amber-bg);border:1px solid var(--amber);"></span>Leave</span>
+      <span><span class="cal-dot" style="background:var(--blue-bg);border:1px solid var(--blue);"></span>Off (Sunday / Holiday)</span>
+      <span><span class="cal-dot" style="background:var(--surface-muted);border:1px solid var(--border);"></span>Not taken that day</span>
+    </div>
   </div>
 
   <!-- COMPLAINTS -->
@@ -230,10 +257,11 @@ $('logoutBtn').addEventListener('click', () => signOut(auth));
 
 // ---------------- Navigation between the 4 sections ----------------
 function showView(name){
-  ['dashboard','attendance','complaints','myAttendance','notifications'].forEach(v => {
+  ['dashboard','attendance','studentRegister','complaints','myAttendance','notifications'].forEach(v => {
     $('view-' + v).classList.toggle('hidden', v !== name);
   });
   if (name === 'attendance') { checkTeacherPresentToday().then(updateWindowBanner); }
+  if (name === 'studentRegister') loadStudentRegister();
   if (name === 'complaints') loadComplaints();
   if (name === 'myAttendance') loadMyAttendance();
   if (name === 'notifications') loadNotifications(true);
@@ -381,6 +409,9 @@ async function setActiveClass(classId){
   const sel = $('complaintStudent');
   sel.innerHTML = '<option value="">Select student…</option>' +
     students.map(s => `<option value="${s.id}">${s.studentName || s.name || ''} (${s.studentNo || ''})</option>`).join('');
+
+  // If the Student Register happens to be open when an Incharge switches class, refresh it too.
+  if (!$('view-studentRegister').classList.contains('hidden')) loadStudentRegister();
 }
 
 // ---------------- Student attendance ----------------
@@ -644,6 +675,102 @@ async function loadMyAttendance(){
   </div>`;
   el.innerHTML = html;
 }
+
+// ---------------- Student Attendance Register (read-only, monthly, whole class) ----------------
+// Unlike My Attendance (staff), a day with no attendance record at all is shown as
+// "Not taken" rather than counted as Absent — a class teacher simply not marking that
+// day isn't the same as a specific student being absent, so it isn't held against them.
+function buildStudentCalendarHTML(year, month, byDay){
+  const DOW = ['S','M','T','W','T','F','S'];
+  const total = daysInMonth(year, month);
+  const firstDow = new Date(year, month, 1).getDay();
+  let p = 0, a = 0, l = 0;
+  let cells = '';
+  for (let i = 0; i < firstDow; i++) cells += `<div class="cal-cell cal-empty"></div>`;
+  for (let day = 1; day <= total; day++) {
+    const cellDateStr = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    let cls = 'cal-nodata', title = ' title="Not taken that day"';
+    if (isOffDateStr(cellDateStr)) {
+      cls = 'cal-off'; title = ` title="${offLabelFor(cellDateStr)}"`;
+    } else if (byDay[day]) {
+      const st = byDay[day];
+      if (st === 'present') { cls = 'cal-present'; p++; }
+      else if (st === 'leave') { cls = 'cal-leave'; l++; }
+      else { cls = 'cal-absent'; a++; }
+      title = ` title="${st.charAt(0).toUpperCase() + st.slice(1)}"`;
+    }
+    cells += `<div class="cal-cell ${cls}"${title}><span>${day}</span></div>`;
+  }
+  const gridHtml = `<div class="cal-grid">${DOW.map(d => `<div class="cal-dow">${d}</div>`).join('')}${cells}</div>`;
+  return { html: gridHtml, p, a, l };
+}
+
+async function loadStudentRegister(){
+  const picker = $('srMonthPicker');
+  if (!picker.value) picker.value = todayStr().slice(0, 7);
+  const ym = picker.value;
+  const [year, monthNum] = ym.split('-').map(Number);
+  const month = monthNum - 1;
+  const list = $('srList');
+  list.innerHTML = '<div class="skel" style="width:92%"></div><div class="skel" style="width:78%"></div><div class="skel" style="width:85%"></div>';
+  $('srClassLabel').textContent = `Class ${currentClass.className || ''}${currentClass.section ? ' - ' + currentClass.section : ''}`.trim();
+
+  let snap;
+  try {
+    // Equality-only query (classId) — the month is filtered client-side below —
+    // same "avoid composite indexes" approach used everywhere else in this app.
+    const q = query(collection(dbx, 'attendance'), where('classId', '==', currentClassId));
+    snap = await getDocs(q);
+  } catch (e) {
+    list.innerHTML = '<div class="center-note">Could not load the register — please check your internet connection and try again.</div>';
+    return;
+  }
+  await ensureOffDaysLoaded();
+
+  const byDate = {}; // "YYYY-MM-DD" -> { studentId: status }
+  snap.docs.forEach(d => {
+    const r = d.data();
+    if (!r.date || !r.date.startsWith(ym)) return;
+    const recs = {};
+    Object.keys(r.records || {}).forEach(sid => { recs[sid] = r.records[sid].status; });
+    byDate[r.date] = recs;
+  });
+
+  const roster = students.slice().sort((a, b) => {
+    const ra = Number(a.rollNo || 0), rb = Number(b.rollNo || 0);
+    if (ra && rb) return ra - rb;
+    if (ra) return -1;
+    if (rb) return 1;
+    return (a.studentName || a.name || '').localeCompare(b.studentName || b.name || '');
+  });
+
+  if (!roster.length) { list.innerHTML = '<div class="center-note">No students are registered in this class.</div>'; return; }
+
+  list.innerHTML = roster.map(s => {
+    const byDay = {};
+    Object.keys(byDate).forEach(dateStr => {
+      const day = Number(dateStr.slice(8, 10));
+      if (byDate[dateStr][s.id]) byDay[day] = byDate[dateStr][s.id];
+    });
+    const cal = buildStudentCalendarHTML(year, month, byDay);
+    return `<div class="sr-student">
+      <div class="roster-row sr-row" data-sid="${s.id}">
+        <div><div class="stu-name">${s.rollNo ? `#${s.rollNo} · ` : ''}${s.studentName || s.name || ''}</div><div class="stu-no">${s.studentNo || ''}</div></div>
+        <div class="sr-tally"><span class="tally-present">${cal.p}P</span> · <span class="tally-absent">${cal.a}A</span> · <span class="tally-leave">${cal.l}L</span> <span class="sr-caret">▾</span></div>
+      </div>
+      <div class="sr-detail hidden">${cal.html}</div>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.sr-row').forEach(rowEl => {
+    rowEl.addEventListener('click', () => {
+      const detail = rowEl.nextElementSibling;
+      detail.classList.toggle('hidden');
+      rowEl.querySelector('.sr-caret').textContent = detail.classList.contains('hidden') ? '▾' : '▴';
+    });
+  });
+}
+$('srMonthPicker').addEventListener('change', loadStudentRegister);
 
 // ---------------- Notifications (salary popups etc.) ----------------
 async function loadNotifications(markSeen){

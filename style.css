@@ -156,6 +156,16 @@ textarea{ min-height:90px; resize:vertical; }
 .cal-present{ background:var(--success); color:#fff; }
 .cal-absent{ background:var(--danger); color:#fff; }
 .cal-off{ background:var(--blue-bg); color:var(--blue); border:1px solid var(--blue); opacity:1; }
+.cal-leave{ background:var(--amber-bg); color:#8A5E00; border:1px solid var(--amber); opacity:1; }
+.tally-leave{ color:#8A5E00; }
+
+.sr-student{ border-bottom:1px solid var(--border); }
+.sr-student:last-child{ border-bottom:none; }
+.sr-row{ cursor:pointer; }
+.sr-tally{ display:flex; align-items:center; gap:4px; font-size:11.5px; font-weight:700; color:var(--ink-muted); white-space:nowrap; }
+.sr-caret{ margin-left:2px; color:var(--ink-muted); font-size:13px; }
+.sr-detail{ padding:2px 2px 16px; }
+.sr-detail.hidden{ display:none; }
 .cal-time{ font-size:8px; font-weight:800; line-height:1; opacity:.9; }
 .cal-late .cal-time{ color:#c0392b; background:#fff; border-radius:5px; padding:0 4px; opacity:1; }
 .cal-legend{ display:flex; gap:14px; margin:12px 2px 0; font-size:11.5px; color:var(--ink-muted); font-weight:600; }

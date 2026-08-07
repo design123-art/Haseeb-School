@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teacher App Sync — Haseeb School</title>
+<link rel="icon" href="logo.png">
+<meta name="theme-color" content="#0F7A41">
+<link rel="stylesheet" href="style.css">
+<style>
+  .sync-row{ display:flex; gap:14px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+  .sync-status{ font-size:13px; color:var(--ink-muted); margin-top:8px; }
+  .log-box{ margin-top:14px; background:var(--surface-muted); border-radius:12px; padding:12px 14px;
+    font-size:12.5px; max-height:180px; overflow-y:auto; font-family:Consolas,monospace; white-space:pre-wrap; }
+  .adm-login{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+  .adm-login .field{ min-width:200px; }
+  .adm-login input{ width:100%; padding:9px 10px; border-radius:8px; border:1px solid var(--border); }
+  .complaint-row{ border-bottom:1px solid var(--border); padding:10px 4px; }
+  .complaint-row:last-child{ border-bottom:none; }
+  .complaint-row .meta{ font-size:12px; color:var(--ink-muted); }
+  .salary-form{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+  .salary-form .field{ min-width:170px; }
+  .info-card{ background:var(--accent-light); border:1px solid var(--border); border-radius:12px;
+    padding:14px 16px; font-size:13px; color:var(--ink); display:flex; gap:10px; align-items:flex-start; }
+  .info-card .ic-emoji{ font-size:18px; flex-shrink:0; }
+  .info-card a.link-btn{ display:inline-block; margin-top:8px; font-weight:700; color:var(--primary-dark); text-decoration:none; }
+  .month-table{ width:100%; border-collapse:collapse; }
+  .month-table td, .month-table th{ text-align:center; padding:8px 10px; border-bottom:1px solid var(--border); }
+  .month-table th{ color:var(--ink-muted); font-size:12.5px; }
+  .month-table td:first-child, .month-table th:first-child{ text-align:left; }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-mount"></div>
+  <div class="main">
+    <div id="topbar-mount"></div>
+    <div class="page">
+
+      <div class="card" id="adminLoginCard">
+        <div class="card-head"><h3>🔐 Connect to Teacher App</h3></div>
+        <p>You only need to log in here once (the app remembers it). This connects the online features
+        used by the teachers' mobile app — the rest of this software still works fully offline.</p>
+        <div class="adm-login">
+          <div class="field"><label>Admin Email</label><input type="email" id="admEmail" placeholder="admin@haseeb.school"></div>
+          <div class="field"><label>Password</label><input type="password" id="admPass"></div>
+          <button class="btn btn-primary" id="admLoginBtn" type="button">Connect</button>
+        </div>
+        <div class="error-box" id="admError" style="display:none;"></div>
+      </div>
+
+      <div id="syncTools" class="hidden">
+
+        <div class="card">
+          <div class="card-head"><h3>📡 Roster &amp; Student Attendance</h3></div>
+          <div class="sync-row">
+            <button class="btn btn-outline" id="pushRosterBtn" type="button">Push Classes + Students to Teacher App</button>
+            <button class="btn btn-primary" id="pullAttendanceBtn" type="button">Pull Student Attendance from Teacher App</button>
+          </div>
+          <div class="sync-status" id="lastSync">Last synced: never</div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>🗓️ Teacher's Own Attendance &amp; Off Days</h3></div>
+          <div class="info-card">
+            <span class="ic-emoji">ℹ️</span>
+            <div>
+              Marking staff attendance and marking a day Off (holiday) have moved to the
+              <b>Attendance Register</b> page, alongside student attendance, so everything lives in one place now.
+              <br><a class="link-btn" href="register.html">Open Attendance Register →</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>💰 Salary Notifications</h3></div>
+          <div class="info-card">
+            <span class="ic-emoji">ℹ️</span>
+            <div>
+              This is now automatic. When you record a <b>Salaries</b> expense for a staff member in the
+              <b>Expense Tracker</b>, and that staff member has a teacher app login, a "Salary Paid" popup
+              notification is sent to their mobile app on its own — there is nothing to do here.
+              <br><a class="link-btn" href="expenses.html">Open Expense Tracker →</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>📝 Student Complaints from Teachers</h3></div>
+          <button class="btn btn-outline btn-sm" id="loadComplaintsBtn" type="button">Refresh</button>
+          <div id="complaintsBox" style="margin-top:10px;"><div class="center-note" style="text-align:center;color:var(--ink-muted);">Click Refresh to load.</div></div>
+        </div>
+
+        <div class="card">
+          <div class="log-box" id="logBox">Ready.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="local-db.js"></script>
+<script src="data.js"></script>
+<script src="auth-guard.js"></script>
+<script src="shell.js"></script>
+<script src="firebase-config.js"></script>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getAuth, signInWithEmailAndPassword, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore, doc, setDoc, addDoc, getDocs, deleteDoc, collection, query, orderBy, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+renderShell({ title: 'Teacher App Sync', breadcrumb: 'Roster, teacher attendance, and the complaints inbox' });
+await requireAuth();
+
+const fbApp = initializeApp(window.FIREBASE_CONFIG);
+const rauth = getAuth(fbApp);
+const rdb = getFirestore(fbApp);
+
+const $ = id => document.getElementById(id);
+const logBox = $('logBox');
+function log(msg){ logBox.textContent += `\n[${new Date().toLocaleTimeString()}] ${msg}`; logBox.scrollTop = logBox.scrollHeight; }
+function setLastSync(){ $('lastSync').textContent = 'Last synced: ' + new Date().toLocaleString(); }
+
+// ---- Admin login (once — Firebase keeps the session on this PC) ----
+$('admLoginBtn').addEventListener('click', async () => {
+  $('admError').style.display = 'none';
+  try {
+    await signInWithEmailAndPassword(rauth, $('admEmail').value.trim(), $('admPass').value);
+  } catch (e) {
+    $('admError').textContent = 'Could not connect — please check the email and password.';
+    $('admError').style.display = 'block';
+  }
+});
+
+onAuthStateChanged(rauth, async (user) => {
+  if (user) {
+    $('adminLoginCard').classList.add('hidden');
+    $('syncTools').classList.remove('hidden');
+    log('Connected to Teacher App.');
+    log('Your admin UID is: ' + user.uid);
+    log('⚠ This EXACT UID must exist as a document ID inside a Firestore collection called "admins" (Firebase Console → Firestore Database → Data), or every write will keep failing with "Missing or insufficient permissions".');
+    showUidBanner(user.uid);
+  } else {
+    $('adminLoginCard').classList.remove('hidden');
+    $('syncTools').classList.add('hidden');
+  }
+});
+
+function showUidBanner(uid){
+  let banner = document.getElementById('uidBanner');
+  if (!banner){
+    banner = document.createElement('div');
+    banner.id = 'uidBanner';
+    banner.className = 'info-card';
+    banner.style.cssText = 'background:var(--accent-light);border:1px solid var(--border);border-radius:12px;padding:14px 16px;font-size:13px;margin-bottom:14px;';
+    $('syncTools').prepend(banner);
+  }
+  banner.innerHTML = `
+    <b>🔑 Your signed-in admin UID:</b>
+    <code id="uidText" style="user-select:all;background:#fff;padding:2px 8px;border-radius:6px;margin:0 6px;">${uid}</code>
+    <button class="btn btn-outline btn-sm" id="copyUidBtn" type="button">Copy UID</button>
+    <div style="margin-top:6px;color:var(--ink-muted);">This must be a document ID inside Firestore → <b>admins</b> collection, or writes will fail with "Missing or insufficient permissions".</div>
+  `;
+  document.getElementById('copyUidBtn').addEventListener('click', () => {
+    navigator.clipboard.writeText(uid).then(() => showToast('UID copied!'));
+  });
+}
+
+// ---- Class category (used by Incharge roles: Montessori / Primary / Secondary) ----
+// Detected automatically from the class name so nobody has to tag it by hand.
+// If a class name doesn't match anything below (category comes back null),
+// only Admin Incharge and that class's own Class Teacher can access it —
+// rename the class to include the grade number if it should count as
+// Primary/Secondary, or a Montessori-section name if it should count there.
+function classifyCategory(className){
+  const name = (className || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const montessoriKeywords = ['play group', 'playgroup', 'nursery', 'prep', 'pg',
+    'mont senior', 'montessori senior', 'mont advance', 'montessori advance', 'montessori'];
+  if (montessoriKeywords.some(k => name.includes(k))) return 'montessori';
+  const match = name.match(/(\d+)/);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    if (num >= 1 && num <= 5) return 'primary';
+    if (num >= 6 && num <= 10) return 'secondary';
+  }
+  return null;
+}
+
+// ---- Push classes + students (full mirror sync — removes anything old too) ----
+$('pushRosterBtn').addEventListener('click', async () => {
+  const btn = $('pushRosterBtn'); btn.disabled = true; log('Pushing classes + students…');
+  try {
+    const [classes, students] = await Promise.all([getAllClasses(), getAllStudents()]);
+    const localClassIds = new Set(classes.map(c => c.id));
+    const localStudentIds = new Set(students.filter(s => s.classId).map(s => s.id));
+
+    const tally = { montessori: [], primary: [], secondary: [], other: [] };
+    for (const c of classes) {
+      const category = classifyCategory(c.className);
+      (tally[category || 'other']).push(c.className || c.id);
+      await setDoc(doc(rdb, 'classes', c.id), { className: c.className || '', section: c.section || '', academicYear: c.academicYear || '', category, updatedAt: serverTimestamp() });
+    }
+    for (const s of students) {
+      if (!s.classId) continue;
+      await setDoc(doc(rdb, 'students', s.id), { classId: s.classId, studentName: s.studentName || s.name || '', studentNo: s.studentNo || '', rollNo: s.rollNo || null, updatedAt: serverTimestamp() });
+    }
+
+    // Remove anything in Firestore that no longer exists locally (old/deleted classes & students).
+    const [remoteClassSnap, remoteStudentSnap] = await Promise.all([getDocs(collection(rdb, 'classes')), getDocs(collection(rdb, 'students'))]);
+    let removedClasses = 0, removedStudents = 0;
+    for (const d of remoteClassSnap.docs) { if (!localClassIds.has(d.id)) { await deleteDoc(doc(rdb, 'classes', d.id)); removedClasses++; } }
+    for (const d of remoteStudentSnap.docs) { if (!localStudentIds.has(d.id)) { await deleteDoc(doc(rdb, 'students', d.id)); removedStudents++; } }
+
+    log(`Done — ${classes.length} classes, ${students.length} students pushed.`);
+    if (removedClasses || removedStudents) log(`Cleaned up old data no longer in your local database — removed ${removedClasses} class(es), ${removedStudents} student(s).`);
+    log(`Categorised — Montessori: ${tally.montessori.join(', ') || 'none'} | Primary: ${tally.primary.join(', ') || 'none'} | Secondary: ${tally.secondary.join(', ') || 'none'}${tally.other.length ? ' | Uncategorised: ' + tally.other.join(', ') : ''}`);
+    setLastSync();
+  } catch (e) { log('ERROR: ' + e.message); } finally { btn.disabled = false; }
+});
+
+// ---- Pull student attendance submitted by teachers ----
+$('pullAttendanceBtn').addEventListener('click', async () => {
+  const btn = $('pullAttendanceBtn'); btn.disabled = true; log('Pulling student attendance…');
+  try {
+    const snap = await getDocs(collection(rdb, 'attendance'));
+    let count = 0;
+    for (const d of snap.docs) {
+      const data = d.data();
+      if (data.source !== 'mobile_teacher') continue;
+      await saveAttendance({ classId: data.classId, className: data.className, section: data.section, date: data.date, records: data.records, markedBy: (data.markedBy || '') + ' (via mobile app)' });
+      count++;
+    }
+    log(`Done — ${count} attendance record(s) pulled into local database.`);
+    setLastSync();
+  } catch (e) { log('ERROR: ' + e.message); } finally { btn.disabled = false; }
+});
+
+// ---- Complaints inbox ----
+$('loadComplaintsBtn').addEventListener('click', async () => {
+  const box = $('complaintsBox'); box.innerHTML = 'Loading…';
+  try {
+    const snap = await getDocs(query(collection(rdb, 'complaints'), orderBy('createdAt', 'desc')));
+    if (snap.empty) { box.innerHTML = '<div style="text-align:center;color:var(--ink-muted);">No complaints yet.</div>'; return; }
+    box.innerHTML = snap.docs.map(d => {
+      const c = d.data();
+      const when = c.createdAt && c.createdAt.toDate ? c.createdAt.toDate().toLocaleString() : '';
+      return `<div class="complaint-row"><b>${c.studentName || ''}</b> — ${c.text}
+        <div class="meta">By ${c.createdByName || ''} · ${when} · ${c.status}</div></div>`;
+    }).join('');
+  } catch (e) { box.innerHTML = 'ERROR: ' + e.message; }
+});
+</script>
+</body>
+</html>
