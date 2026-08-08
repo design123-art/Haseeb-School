@@ -142,6 +142,7 @@ input:focus, select:focus, textarea:focus{ outline:2px solid var(--accent); outl
   box-shadow:0 8px 20px rgba(14,159,110,0.28); }
 .btn-primary:disabled{ background:#C7CBDA; box-shadow:none; cursor:not-allowed; }
 .btn-outline{ background:#fff; border:1.5px solid var(--border); color:var(--ink); margin-top:10px; }
+.btn-outline:hover{ background:var(--surface-muted); border-color:var(--primary); color:var(--primary); }
 
 .error-box{ background:var(--danger-bg); color:var(--danger); border-radius:12px; padding:10px 14px;
   font-size:13.5px; margin-top:14px; display:none; font-weight:600; }
@@ -168,7 +169,8 @@ input:focus, select:focus, textarea:focus{ outline:2px solid var(--accent); outl
 .view-subtitle{ font-size:13px; color:var(--ink-muted); margin:0 0 14px; }
 
 .roster-row{ display:flex; align-items:center; justify-content:space-between; gap:10px;
-  padding:12px 4px; border-bottom:1px solid var(--border); }
+  padding:12px 8px; border-bottom:1px solid var(--border); border-radius:10px; transition:background .15s ease; margin:0 -4px; }
+.roster-row:hover{ background:var(--surface-muted); }
 .roster-row:last-child{ border-bottom:none; }
 .stu-name{ font-weight:600; font-size:14.5px; }
 .stu-no{ font-size:12px; color:var(--ink-muted); }
@@ -181,7 +183,8 @@ input:focus, select:focus, textarea:focus{ outline:2px solid var(--accent); outl
 
 .summary-strip{ display:flex; gap:10px; margin-bottom:16px; }
 .chip{ flex:1; text-align:center; background:var(--surface-muted); border-radius:12px; padding:10px 6px;
-  border:1.5px solid transparent; }
+  border:1.5px solid transparent; transition:transform .15s ease, box-shadow .15s ease; }
+.chip:hover{ transform:translateY(-2px); box-shadow:var(--shadow-sm); }
 .chip b{ display:block; font-size:19px; }
 .chip small{ font-size:11px; color:var(--ink-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.3px; }
 .chip-present{ border-color:var(--success-bg); } .chip-present b{ color:var(--primary-dark); }
@@ -348,7 +351,11 @@ body{ background-size:180% 180%, 180% 180%, auto; animation:bgDrift 22s ease-in-
 .chip.chip-pulse b{ animation:popIn .3s ease; }
 
 /* Error/success/info boxes slide down into view */
-.error-box[style*="block"], .success-note:not(.hidden), .info-card{ animation:slideDown .25s ease both; overflow:hidden; }
+.error-box[style*="block"], .success-note:not(.hidden), .info-card, .window-banner{ animation:slideDown .25s ease both; overflow:hidden; }
+
+/* Summary chips (Mark Attendance view) pop in with a slight stagger too */
+.summary-strip .chip{ animation:popIn .3s cubic-bezier(.2,.8,.2,1) both; }
+.summary-strip .chip:nth-child(1){ animation-delay:.03s; } .summary-strip .chip:nth-child(2){ animation-delay:.08s; } .summary-strip .chip:nth-child(3){ animation-delay:.13s; }
 
 /* Buttons: a touch of lift on hover, not just the active-state scale */
 .btn{ transition:transform .1s ease, opacity .15s ease, box-shadow .18s ease; }
