@@ -249,6 +249,10 @@ textarea{ min-height:90px; resize:vertical; }
 @keyframes bgDrift{ 0%{ background-position:0% 0%, 100% 0%, 0% 0%; } 50%{ background-position:8% 6%, 92% 8%, 0% 0%; } 100%{ background-position:0% 0%, 100% 0%, 0% 0%; } }
 @keyframes shimmer{ 0%{ background-position:-200px 0; } 100%{ background-position:200px 0; } }
 @keyframes dotPulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+@keyframes slideRight{ from{ opacity:0; transform:translateX(-14px); } to{ opacity:1; transform:none; } }
+@keyframes ringPop{ from{ opacity:0; transform:scale(.7) rotate(-90deg); } to{ opacity:1; transform:scale(1) rotate(0deg); } }
+@keyframes badgePulse{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.18); } }
+@keyframes glowSweep{ 0%{ background-position:-150% 0; } 100%{ background-position:250% 0; } }
 
 body{ background-size:180% 180%, 180% 180%, auto; animation:bgDrift 22s ease-in-out infinite; }
 
@@ -259,7 +263,7 @@ body{ background-size:180% 180%, 180% 180%, auto; animation:bgDrift 22s ease-in-
 .screen.hidden{ display:none; }
 
 /* Section views slide up into place each time they're opened */
-#view-dashboard, #view-attendance, #view-complaints, #view-myAttendance, #view-notifications{
+#view-dashboard, #view-attendance, #view-studentRegister, #view-complaints, #view-myAttendance, #view-notifications{
   animation:slideUp .32s cubic-bezier(.2,.8,.2,1) both;
 }
 
@@ -268,14 +272,47 @@ body{ background-size:180% 180%, 180% 180%, auto; animation:bgDrift 22s ease-in-
 /* Dashboard tiles: staggered entrance + a livelier tap/hover */
 .tile{ animation:popIn .3s cubic-bezier(.2,.8,.2,1) both; }
 .tile:nth-child(1){ animation-delay:.02s; } .tile:nth-child(2){ animation-delay:.08s; }
-.tile:nth-child(3){ animation-delay:.14s; } .tile:nth-child(4){ animation-delay:.2s; }
-.tile:hover{ transform:translateY(-3px); box-shadow:0 12px 26px rgba(23,26,46,0.12); }
+.tile:nth-child(3){ animation-delay:.14s; } .tile:nth-child(4){ animation-delay:.2s; } .tile:nth-child(5){ animation-delay:.26s; }
+.tile{ transition:transform .18s ease, box-shadow .18s ease; }
+.tile:hover{ transform:translateY(-4px) scale(1.015); box-shadow:0 14px 30px rgba(23,26,46,0.14); }
 .tile .tile-icon{ transition:transform .18s ease; }
-.tile:hover .tile-icon{ transform:scale(1.12) rotate(-4deg); }
+.tile:hover .tile-icon{ transform:scale(1.14) rotate(-5deg); }
+
+/* ---- Sidebar entrance + interaction animation ---- */
+.sidebar-brand{ animation:slideRight .35s ease both; }
+.sidebar-brand img{ animation:floatY 4.5s ease-in-out infinite; }
+.nav-link{ animation:slideRight .32s cubic-bezier(.2,.8,.2,1) both; }
+.nav-link:nth-child(1){ animation-delay:.03s; } .nav-link:nth-child(2){ animation-delay:.08s; }
+.nav-link:nth-child(3){ animation-delay:.13s; } .nav-link:nth-child(4){ animation-delay:.18s; }
+.nav-link:nth-child(5){ animation-delay:.23s; } .nav-link:nth-child(6){ animation-delay:.28s; }
+.nav-link{ transition:background .18s ease, color .18s ease, transform .18s ease, box-shadow .2s ease; }
+.nav-link:hover{ transform:translateX(3px); }
+.nav-link:active{ transform:translateX(3px) scale(.97); }
+.nav-link .nav-icon{ display:inline-block; transition:transform .2s cubic-bezier(.34,1.56,.64,1); }
+.nav-link:hover .nav-icon{ transform:scale(1.2) rotate(-6deg); }
+.nav-link.active .nav-icon{ transform:scale(1.1); }
+.nav-badge{ animation:badgePulse 1.6s ease-in-out infinite; }
+.sidebar-footer{ animation:slideRight .4s ease both .3s; }
+.sidebar-user .avatar{ transition:transform .2s ease; }
+.sidebar-user:hover .avatar{ transform:scale(1.08) rotate(-4deg); }
+
+/* ---- Dashboard hero + ring: entrance + smooth fill animation ---- */
+@property --pct{ syntax:'<number>'; inherits:true; initial-value:0; }
+.dash-hero{ animation:slideUp .38s cubic-bezier(.2,.8,.2,1) both; transition:transform .2s ease; }
+.dash-ring-card{ animation:popIn .4s cubic-bezier(.34,1.56,.64,1) both .12s; transition:transform .2s ease; }
+.dash-ring-card:hover{ transform:translateY(-3px); }
+.ring{ animation:ringPop .5s cubic-bezier(.34,1.56,.64,1) both .2s; transition:--pct 1s cubic-bezier(.2,.8,.2,1); }
+.dash-summary .chip{ animation:popIn .3s cubic-bezier(.2,.8,.2,1) both; transition:transform .15s ease; }
+.dash-summary .chip:nth-child(1){ animation-delay:.05s; } .dash-summary .chip:nth-child(2){ animation-delay:.1s; } .dash-summary .chip:nth-child(3){ animation-delay:.15s; }
+.dash-summary .chip:hover{ transform:translateY(-2px); }
+.main-area .topbar{ animation:slideUp .3s ease both; }
+.topbar-greeting{ background:linear-gradient(90deg,var(--navy),var(--primary),var(--navy)); background-size:250% 100%;
+  -webkit-background-clip:text; background-clip:text; color:transparent; animation:glowSweep 6s ease-in-out infinite; }
 
 /* Status buttons pop when selected */
-.status-btn{ transform:scale(1); }
+.status-btn{ transform:scale(1); transition:transform .12s ease; }
 .status-btn.active-present, .status-btn.active-absent, .status-btn.active-leave{ animation:popIn .22s ease both; }
+.status-btn:hover{ transform:translateY(-1px); }
 
 /* Roster rows fade in one after another */
 .roster-row{ animation:slideUp .28s ease both; }
@@ -285,6 +322,12 @@ body{ background-size:180% 180%, 180% 180%, auto; animation:bgDrift 22s ease-in-
 
 /* Error/success/info boxes slide down into view */
 .error-box[style*="block"], .success-note:not(.hidden), .info-card{ animation:slideDown .25s ease both; overflow:hidden; }
+
+/* Buttons: a touch of lift on hover, not just the active-state scale */
+.btn{ transition:transform .1s ease, opacity .15s ease, box-shadow .18s ease; }
+.btn-primary:hover:not(:disabled){ box-shadow:0 10px 24px rgba(47,111,237,0.32); transform:translateY(-1px); }
+.logout{ transition:transform .15s ease, background .15s ease; }
+.logout:hover{ transform:translateY(-1px); background:var(--danger); color:#fff; }
 
 /* Install banner: friendly, hard to miss, not annoying */
 .install-banner{ margin-top:16px; border-radius:16px; padding:16px; background:linear-gradient(135deg,var(--accent-light),var(--blue-bg));
