@@ -1,11 +1,11 @@
 {
-  "name": "Haseeb School — Attendance",
-  "short_name": "HS Attendance",
-  "description": "Class teacher online attendance app",
-  "start_url": "./index.html",
+  "name": "Al-Haseeb Model Sec. School — Teacher Portal",
+  "short_name": "AHMSS Teacher",
+  "description": "Class teacher attendance, complaints, and profile portal",
+  "start_url": "./dashboard.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#F5F6FB",
   "theme_color": "#0E9F6E",
   "icons": [

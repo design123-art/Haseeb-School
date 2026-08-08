@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>My Attendance — Teacher Portal</title>
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#0E9F6E">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="teacher-style.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar-mount"></div>
+  <div class="main">
+    <div class="topbar" id="topbar-mount"></div>
+
+    <p class="view-subtitle">Marked by the school admin. Shown by month, with the time it was recorded.</p>
+    <div class="card">
+      <div id="myAttList"><div class="skel" style="width:92%"></div><div class="skel" style="width:78%"></div><div class="skel" style="width:85%"></div><div class="skel" style="width:65%"></div></div>
+    </div>
+  </div>
+</div>
+
+<script src="firebase-config.js"></script>
+<script type="module">
+import {
+  requireTeacherAuth, dbx, collection, query, where, getDocs, $,
+  ensureOffDaysLoaded, isOffDateStr, offLabelFor, formatTime12h, monthLabelFromDate, daysInMonth
+} from './teacher-common.js';
+import { renderTeacherShell } from './teacher-shell.js';
+
+const { teacher } = await requireTeacherAuth();
+await renderTeacherShell({ active: 'myAttendance', title: 'My Attendance', subtitle: 'Your monthly record, marked by the admin', teacher });
+
+if (!teacher) { $('myAttList').innerHTML = '<div class="center-note">Your teacher profile has not been set up yet. Please contact the school admin.</div>'; }
+else await loadMyAttendance();
+
+async function loadMyAttendance(){
+  const el = $('myAttList');
+  if (!teacher.staffId) {
+    el.innerHTML = '<div class="center-note">Your staff ID is not linked to this login yet. Ask the admin to check your account in Teacher Accounts.</div>';
+    return;
+  }
+  let snap;
+  try {
+    const q = query(collection(dbx, 'teacherAttendance'), where('staffId', '==', teacher.staffId));
+    snap = await getDocs(q);
+  } catch (e) {
+    el.innerHTML = '<div class="center-note">Could not load your attendance — please check your internet connection and try again.</div>';
+    return;
+  }
+  await ensureOffDaysLoaded();
+  if (snap.empty) { el.innerHTML = '<div class="center-note">No attendance records yet.</div>'; return; }
+
+  const groups = new Map();
+  snap.docs.forEach(d => {
+    const r = d.data();
+    const dt = new Date(r.date + 'T00:00:00');
+    if (Number.isNaN(dt.getTime())) return;
+    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+    if (!groups.has(key)) groups.set(key, { label: monthLabelFromDate(r.date), year: dt.getFullYear(), month: dt.getMonth(), byDay: {} });
+    groups.get(key).byDay[dt.getDate()] = { status: r.status, time: r.time };
+  });
+  // Most recent month first.
+  const sortedGroups = [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+
+  const DOW = ['S','M','T','W','T','F','S'];
+  let html = '';
+  for (const [, g] of sortedGroups) {
+    const total = daysInMonth(g.year, g.month);
+    const firstDow = new Date(g.year, g.month, 1).getDay();
+    let presentCount = 0, absentCount = 0;
+    const today = new Date(); today.setHours(0,0,0,0);
+    let cells = '';
+    for (let i = 0; i < firstDow; i++) cells += `<div class="cal-cell cal-empty"></div>`;
+    for (let day = 1; day <= total; day++) {
+      const rec = g.byDay[day];
+      const cellDate = new Date(g.year, g.month, day);
+      const isFuture = cellDate > today;
+      const cellDateStr = `${g.year}-${String(g.month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      let cls = 'cal-nodata', title = '';
+      if (isOffDateStr(cellDateStr)) { cls = 'cal-off'; title = ` title="${offLabelFor(cellDateStr)}"`; }
+      else if (rec) {
+        if (rec.status === 'present') { cls = 'cal-present'; if (rec.time && rec.time > '07:40') cls += ' cal-late'; presentCount++; }
+        else { cls = 'cal-absent'; absentCount++; }
+        title = ` title="${formatTime12h(rec.time)}"`;
+      } else if (!isFuture) { cls = 'cal-absent'; absentCount++; title = ' title="No attendance was marked for you that day — treated as Absent"'; }
+      const timeLabel = (rec && rec.status === 'present' && rec.time) ? `<small class="cal-time">${formatTime12h(rec.time)}</small>` : '';
+      cells += `<div class="cal-cell ${cls}"${title}><span>${day}</span>${timeLabel}</div>`;
+    }
+    html += `<div class="month-sheet">
+      <div class="month-head"><span>${g.label}</span>
+        <span class="month-tally"><span class="tally-present">${presentCount}P</span> · <span class="tally-absent">${absentCount}A</span></span></div>
+      <div class="cal-grid">${DOW.map(d => `<div class="cal-dow">${d}</div>`).join('')}${cells}</div>
+    </div>`;
+  }
+  html += `<div class="cal-legend">
+    <span><span class="cal-dot" style="background:var(--success);"></span>Present</span>
+    <span><span class="cal-dot" style="background:var(--danger);"></span>Absent</span>
+    <span><span class="cal-dot" style="background:var(--blue-bg);border:1px solid var(--blue);"></span>Off (Sunday / Holiday)</span>
+    <span><span class="cal-dot" style="background:var(--surface-muted);border:1px solid var(--border);"></span>No record</span>
+  </div>`;
+  el.innerHTML = html;
+}
+</script>
+</body>
+</html>

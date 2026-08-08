@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Log In — Al-Haseeb Model Sec. School</title>
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#0E9F6E">
+<link rel="stylesheet" href="style.css">
+<style>
+  .login-wrap{ max-width:400px; margin:0 auto; padding:60px 20px; min-height:100vh; display:flex; flex-direction:column; justify-content:center; }
+</style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="brand">
+    <img src="icon-192.png" alt="">
+    <div><h1>Al-Haseeb Model Sec. School</h1><span>Teacher Portal</span></div>
+  </div>
+  <div class="card fade-in">
+    <label for="email">Username / Email</label>
+    <input type="email" id="email" autocomplete="username" placeholder="teacher@haseeb.school">
+    <label for="password">Password</label>
+    <input type="password" id="password" autocomplete="current-password" placeholder="••••••••">
+    <button class="btn btn-primary" id="loginBtn">Log In</button>
+    <div class="error-box" id="loginError"></div>
+  </div>
+</div>
+
+<script type="module">
+import { auth, signInWithEmailAndPassword, onAuthStateChanged, $ } from './teacher-common.js';
+
+// Already logged in? Skip straight to the dashboard.
+onAuthStateChanged(auth, (user) => { if (user) location.href = 'dashboard.html'; });
+
+$('loginBtn').addEventListener('click', async () => {
+  $('loginError').style.display = 'none';
+  const email = $('email').value.trim(), pass = $('password').value;
+  if (!email || !pass) { showLoginError('Please enter both email and password.'); return; }
+  $('loginBtn').disabled = true; $('loginBtn').textContent = 'Logging in…';
+  try {
+    await signInWithEmailAndPassword(auth, email, pass);
+    location.href = 'dashboard.html';
+  } catch (e) {
+    showLoginError('Login failed — please check your email and password.');
+    $('loginBtn').disabled = false; $('loginBtn').textContent = 'Log In';
+  }
+});
+function showLoginError(msg){ $('loginError').textContent = msg; $('loginError').style.display = 'block'; }
+$('password').addEventListener('keydown', e => { if (e.key === 'Enter') $('loginBtn').click(); });
+</script>
+</body>
+</html>

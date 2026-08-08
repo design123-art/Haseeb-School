@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Dashboard — Teacher Portal</title>
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#0E9F6E">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="teacher-style.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar-mount"></div>
+  <div class="main">
+    <div class="topbar" id="topbar-mount"></div>
+
+    <div id="page" class="hidden">
+      <div class="dt-grid">
+        <div class="stat-card">
+          <div class="stat-top"><span class="stat-ic tile-icon-purple">🗓️</span></div>
+          <div class="stat-num" id="dashAttPct">—</div>
+          <div class="stat-label">My Attendance (this month)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-top"><span class="stat-ic tile-icon-amber">📝</span></div>
+          <div class="stat-num" id="dashComplaints">—</div>
+          <div class="stat-label">Pending Complaints</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-top"><span class="stat-ic tile-icon-green">👥</span></div>
+          <div class="stat-num" id="dashStudents">—</div>
+          <div class="stat-label">Students in Class</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-top"><span class="stat-ic tile-icon-blue">🔔</span></div>
+          <div class="stat-num" id="dashNotifs">—</div>
+          <div class="stat-label">Unread Notifications</div>
+        </div>
+      </div>
+
+      <div class="dt-cols">
+        <div class="card">
+          <div class="card-head">Quick Actions</div>
+          <div class="quick-tiles">
+            <a class="tile" href="mark-attendance.html" style="text-decoration:none;color:inherit;"><span class="tile-icon tile-icon-green">📋</span><b>Mark Attendance</b><small>Today's roster</small></a>
+            <a class="tile" href="register.html" style="text-decoration:none;color:inherit;"><span class="tile-icon tile-icon-blue">📘</span><b>Register</b><small>Monthly view</small></a>
+            <a class="tile" href="complaints.html" style="text-decoration:none;color:inherit;"><span class="tile-icon tile-icon-amber">📝</span><b>Complaint</b><small>Report an issue</small></a>
+            <a class="tile" href="my-attendance.html" style="text-decoration:none;color:inherit;"><span class="tile-icon tile-icon-purple">🗓️</span><b>My Attendance</b><small>Monthly record</small></a>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">Recent Notifications</div>
+          <div id="dashNotifList"><div class="center-note">Loading…</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="pageError" class="hidden"><div class="card"><div class="center-note">Your teacher profile has not been set up yet. Please contact the school admin.</div></div></div>
+  </div>
+</div>
+
+<script src="firebase-config.js"></script>
+<script type="module">
+import { requireTeacherAuth, dbx, collection, query, where, getDocs, getDoc, doc, $ } from './teacher-common.js';
+import { renderTeacherShell } from './teacher-shell.js';
+
+const { teacher } = await requireTeacherAuth();
+await renderTeacherShell({ active: 'dashboard', title: 'Dashboard', subtitle: 'An overview of your class and account', teacher });
+
+if (!teacher) { $('pageError').classList.remove('hidden'); }
+else {
+  $('page').classList.remove('hidden');
+  await loadStudentCount();
+  await loadComplaintsCount();
+  await loadNotifPreview();
+  await loadAttendancePct();
+}
+
+async function loadStudentCount(){
+  const classId = teacher.role === 'teacher' ? teacher.classId : sessionStorage.getItem('hs_activeClassId');
+  if (!classId) { $('dashStudents').textContent = '0'; return; }
+  try {
+    const snap = await getDocs(query(collection(dbx, 'students'), where('classId', '==', classId)));
+    $('dashStudents').textContent = snap.size;
+  } catch (e) { $('dashStudents').textContent = '—'; }
+}
+
+async function loadComplaintsCount(){
+  try {
+    const snap = await getDocs(query(collection(dbx, 'complaints'), where('createdByUid', '==', teacher.uid)));
+    $('dashComplaints').textContent = snap.docs.filter(d => d.data().status === 'open').length;
+  } catch (e) { $('dashComplaints').textContent = '—'; }
+}
+
+async function loadNotifPreview(){
+  try {
+    const snap = await getDocs(query(collection(dbx, 'notifications'), where('teacherUid', '==', teacher.uid)));
+    if (snap.empty) { $('dashNotifList').innerHTML = '<div class="center-note">No notifications yet.</div>'; $('dashNotifs').textContent = '0'; return; }
+    const docs = snap.docs.slice().sort((a, b) => {
+      const at = a.data().createdAt && a.data().createdAt.toDate ? a.data().createdAt.toDate().getTime() : 0;
+      const bt = b.data().createdAt && b.data().createdAt.toDate ? b.data().createdAt.toDate().getTime() : 0;
+      return bt - at;
+    });
+    $('dashNotifList').innerHTML = docs.slice(0, 4).map(d => {
+      const n = d.data();
+      const when = n.createdAt && n.createdAt.toDate ? n.createdAt.toDate().toLocaleDateString() : '';
+      return `<div class="complaint-item"><b>${n.type === 'salary' ? '💰 ' : '🔔 '}${n.title || 'Notification'}</b><div class="meta">${when}</div></div>`;
+    }).join('');
+    $('dashNotifs').textContent = docs.filter(d => !d.data().read).length;
+  } catch (e) { $('dashNotifList').innerHTML = '<div class="center-note">Could not load notifications.</div>'; }
+}
+
+async function loadAttendancePct(){
+  if (!teacher.staffId) { $('dashAttPct').textContent = '—'; return; }
+  try {
+    const snap = await getDocs(query(collection(dbx, 'teacherAttendance'), where('staffId', '==', teacher.staffId)));
+    if (snap.empty) { $('dashAttPct').textContent = '—'; return; }
+    const ym = new Date().toISOString().slice(0, 7);
+    let p = 0, total = 0;
+    snap.docs.forEach(d => {
+      const r = d.data();
+      if (!r.date || !r.date.startsWith(ym)) return;
+      total++; if (r.status === 'present') p++;
+    });
+    $('dashAttPct').textContent = total ? Math.round((p / total) * 100) + '%' : '—';
+  } catch (e) { $('dashAttPct').textContent = '—'; }
+}
+</script>
+</body>
+</html>

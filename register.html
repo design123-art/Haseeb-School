@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Attendance Register — Teacher Portal</title>
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#0E9F6E">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="teacher-style.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar-mount"></div>
+  <div class="main">
+    <div class="topbar" id="topbar-mount"></div>
+
+    <div id="page" class="hidden">
+      <p class="view-subtitle" id="srClassLabel"></p>
+      <div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <label for="srMonthPicker" style="font-size:12.5px;font-weight:700;color:var(--ink-muted);margin:0;">Month</label>
+        <input type="month" id="srMonthPicker" style="flex:1;min-width:140px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:13.5px;">
+      </div>
+      <p class="view-subtitle" style="margin-top:10px;">Click a student to see their day-by-day calendar for the month.</p>
+      <div class="card" style="padding:8px 16px;">
+        <div id="srList"><div class="skel" style="width:92%"></div><div class="skel" style="width:78%"></div><div class="skel" style="width:85%"></div></div>
+      </div>
+      <div class="cal-legend">
+        <span><span class="cal-dot" style="background:var(--success);"></span>Present</span>
+        <span><span class="cal-dot" style="background:var(--danger);"></span>Absent</span>
+        <span><span class="cal-dot" style="background:var(--amber-bg);border:1px solid var(--amber);"></span>Leave</span>
+        <span><span class="cal-dot" style="background:var(--blue-bg);border:1px solid var(--blue);"></span>Off (Sunday / Holiday)</span>
+        <span><span class="cal-dot" style="background:var(--surface-muted);border:1px solid var(--border);"></span>Not taken that day</span>
+      </div>
+    </div>
+
+    <div id="pageError" class="hidden"><div class="card"><div class="center-note">No class is available to load. Ask the admin to check your role/class assignment.</div></div></div>
+  </div>
+</div>
+
+<script src="firebase-config.js"></script>
+<script type="module">
+import {
+  requireTeacherAuth, dbx, doc, getDoc, collection, query, where, getDocs, $,
+  ensureOffDaysLoaded, isOffDateStr, offLabelFor, todayStr, daysInMonth
+} from './teacher-common.js';
+import { renderTeacherShell } from './teacher-shell.js';
+
+const { teacher } = await requireTeacherAuth();
+const shell = await renderTeacherShell({ active: 'studentRegister', title: 'Attendance Register', subtitle: 'Monthly class attendance, read-only', teacher });
+
+let students = [], currentClass = null;
+if (!teacher || !shell.classId) { $('pageError').classList.remove('hidden'); }
+else {
+  $('page').classList.remove('hidden');
+  const classSnap = await getDoc(doc(dbx, 'classes', shell.classId));
+  currentClass = classSnap.exists() ? { id: shell.classId, ...classSnap.data() } : { id: shell.classId, className: '' };
+  const snap = await getDocs(query(collection(dbx, 'students'), where('classId', '==', shell.classId)));
+  students = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  $('srClassLabel').textContent = `Class ${currentClass.className || ''}${currentClass.section ? ' - ' + currentClass.section : ''}`.trim();
+  $('srMonthPicker').value = todayStr().slice(0, 7);
+  $('srMonthPicker').addEventListener('change', loadStudentRegister);
+  await loadStudentRegister();
+}
+
+function buildStudentCalendarHTML(year, month, byDay){
+  const DOW = ['S','M','T','W','T','F','S'];
+  const total = daysInMonth(year, month);
+  const firstDow = new Date(year, month, 1).getDay();
+  let p = 0, a = 0, l = 0, cells = '';
+  for (let i = 0; i < firstDow; i++) cells += `<div class="cal-cell cal-empty"></div>`;
+  for (let day = 1; day <= total; day++) {
+    const cellDateStr = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    let cls = 'cal-nodata', title = ' title="Not taken that day"';
+    if (isOffDateStr(cellDateStr)) { cls = 'cal-off'; title = ` title="${offLabelFor(cellDateStr)}"`; }
+    else if (byDay[day]) {
+      const st = byDay[day];
+      if (st === 'present') { cls = 'cal-present'; p++; }
+      else if (st === 'leave') { cls = 'cal-leave'; l++; }
+      else { cls = 'cal-absent'; a++; }
+      title = ` title="${st.charAt(0).toUpperCase() + st.slice(1)}"`;
+    }
+    cells += `<div class="cal-cell ${cls}"${title}><span>${day}</span></div>`;
+  }
+  return { html: `<div class="cal-grid">${DOW.map(d => `<div class="cal-dow">${d}</div>`).join('')}${cells}</div>`, p, a, l };
+}
+
+async function loadStudentRegister(){
+  const picker = $('srMonthPicker');
+  const ym = picker.value;
+  const [year, monthNum] = ym.split('-').map(Number);
+  const month = monthNum - 1;
+  const list = $('srList');
+  list.innerHTML = '<div class="skel" style="width:92%"></div><div class="skel" style="width:78%"></div><div class="skel" style="width:85%"></div>';
+
+  let snap;
+  try {
+    const q = query(collection(dbx, 'attendance'), where('classId', '==', shell.classId));
+    snap = await getDocs(q);
+  } catch (e) {
+    list.innerHTML = '<div class="center-note">Could not load the register — please check your internet connection and try again.</div>';
+    return;
+  }
+  await ensureOffDaysLoaded();
+
+  const byDate = {};
+  snap.docs.forEach(d => {
+    const r = d.data();
+    if (!r.date || !r.date.startsWith(ym)) return;
+    const recs = {};
+    Object.keys(r.records || {}).forEach(sid => { recs[sid] = r.records[sid].status; });
+    byDate[r.date] = recs;
+  });
+
+  const roster = students.slice().sort((a, b) => {
+    const ra = Number(a.rollNo || 0), rb = Number(b.rollNo || 0);
+    if (ra && rb) return ra - rb;
+    if (ra) return -1;
+    if (rb) return 1;
+    return (a.studentName || a.name || '').localeCompare(b.studentName || b.name || '');
+  });
+
+  if (!roster.length) { list.innerHTML = '<div class="center-note">No students are registered in this class.</div>'; return; }
+
+  list.innerHTML = roster.map(s => {
+    const byDay = {};
+    Object.keys(byDate).forEach(dateStr => {
+      const day = Number(dateStr.slice(8, 10));
+      if (byDate[dateStr][s.id]) byDay[day] = byDate[dateStr][s.id];
+    });
+    const cal = buildStudentCalendarHTML(year, month, byDay);
+    return `<div class="sr-student">
+      <div class="roster-row sr-row" data-sid="${s.id}">
+        <div><div class="stu-name">${s.rollNo ? `#${s.rollNo} · ` : ''}${s.studentName || s.name || ''}</div><div class="stu-no">${s.studentNo || ''}</div></div>
+        <div class="sr-tally"><span class="tally-present">${cal.p}P</span> · <span class="tally-absent">${cal.a}A</span> · <span class="tally-leave">${cal.l}L</span> <span class="sr-caret">▾</span></div>
+      </div>
+      <div class="sr-detail hidden">${cal.html}</div>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.sr-row').forEach(rowEl => {
+    rowEl.addEventListener('click', () => {
+      const detail = rowEl.nextElementSibling;
+      detail.classList.toggle('hidden');
+      rowEl.querySelector('.sr-caret').textContent = detail.classList.contains('hidden') ? '▾' : '▴';
+    });
+  });
+}
+</script>
+</body>
+</html>

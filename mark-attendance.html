@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Mark Attendance — Teacher Portal</title>
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#0E9F6E">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="teacher-style.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar-mount"></div>
+  <div class="main">
+    <div class="topbar" id="topbar-mount"></div>
+
+    <div id="page" class="hidden">
+      <p class="view-subtitle" id="attClassLabel"></p>
+      <p class="view-subtitle" id="attDateLabel" style="margin-top:-8px;"></p>
+      <div class="window-banner" id="windowBanner">Checking attendance window…</div>
+      <div class="summary-strip">
+        <div class="chip chip-present"><b id="sumPresent">0</b><small>Present</small></div>
+        <div class="chip chip-absent"><b id="sumAbsent">0</b><small>Absent</small></div>
+        <div class="chip chip-leave"><b id="sumLeave">0</b><small>Leave</small></div>
+      </div>
+      <div class="card" style="padding:8px 16px;">
+        <div id="rosterList"><div class="skel" style="width:92%"></div><div class="skel" style="width:78%"></div><div class="skel" style="width:85%"></div><div class="skel" style="width:65%"></div></div>
+      </div>
+      <button class="btn btn-primary" id="submitBtn" disabled style="max-width:320px;">Submit Today's Attendance</button>
+      <div class="error-box" id="submitError"></div>
+      <div id="successNote" class="success-note hidden">✅ Attendance submitted for today.</div>
+    </div>
+
+    <div id="pageError" class="hidden"><div class="card"><div class="center-note" id="pageErrorMsg"></div></div></div>
+  </div>
+</div>
+
+<script src="firebase-config.js"></script>
+<script type="module">
+import {
+  requireTeacherAuth, dbx, doc, getDoc, setDoc, collection, query, where, getDocs, serverTimestamp, $,
+  todayStr, dayNameOf, ensureOffDaysLoaded, isOffDateStr, offLabelFor
+} from './teacher-common.js';
+import { renderTeacherShell } from './teacher-shell.js';
+
+const { teacher } = await requireTeacherAuth();
+const shell = await renderTeacherShell({ active: 'attendance', title: 'Mark Attendance', subtitle: "Today's roster", teacher });
+
+if (!teacher) { showError('Your teacher profile has not been set up yet. Please contact the school admin.'); }
+else if (!shell.classId) { showError('No class is available to load. Ask the admin to check your role/class assignment.'); }
+else { $('page').classList.remove('hidden'); await init(); }
+
+function showError(msg){ $('pageErrorMsg').textContent = msg; $('pageError').classList.remove('hidden'); }
+
+let currentClass = null, currentClassId = shell.classId, students = [], statusMap = {};
+const WIN = window.ATTENDANCE_WINDOW || { startHour:7, startMinute:0, endHour:9, endMinute:0 };
+const INCHARGE_WIN = { startHour:7, startMinute:0, endHour:12, endMinute:0 };
+function activeWindow(){
+  const r = teacher.role;
+  if (r === 'montessori_incharge' || r === 'primary_incharge' || r === 'secondary_incharge') return INCHARGE_WIN;
+  return WIN;
+}
+let teacherPresentToday = null;
+
+async function init(){
+  const classSnap = await getDoc(doc(dbx, 'classes', currentClassId));
+  currentClass = classSnap.exists() ? { id: currentClassId, ...classSnap.data() } : { id: currentClassId, className: '' };
+
+  const snap = await getDocs(query(collection(dbx, 'students'), where('classId', '==', currentClassId)));
+  students = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  statusMap = {};
+
+  const attId = `att_${currentClassId}_${todayStr()}`;
+  const existing = await getDoc(doc(dbx, 'attendance', attId));
+  if (existing.exists()) {
+    const recs = existing.data().records || {};
+    Object.keys(recs).forEach(sid => { statusMap[sid] = recs[sid].status; });
+  }
+
+  $('attClassLabel').textContent = `Class ${currentClass.className || ''}${currentClass.section ? ' - ' + currentClass.section : ''}`.trim();
+  $('attDateLabel').textContent = dayNameOf(todayStr());
+  renderRoster(); updateSummary();
+  await ensureOffDaysLoaded();
+  await checkTeacherPresentToday();
+  updateWindowBanner();
+  setInterval(() => { checkTeacherPresentToday().then(updateWindowBanner); }, 30000);
+}
+
+async function checkTeacherPresentToday(){
+  if (!teacher.staffId) { teacherPresentToday = false; return; }
+  try {
+    const snap = await getDoc(doc(dbx, 'teacherAttendance', `tatt_${teacher.staffId}_${todayStr()}`));
+    teacherPresentToday = snap.exists() && snap.data().status === 'present';
+  } catch (e) { teacherPresentToday = false; }
+}
+function withinWindowNow(){
+  const w = activeWindow();
+  const now = new Date(); const mins = now.getHours()*60 + now.getMinutes();
+  return mins >= (w.startHour*60+w.startMinute) && mins <= (w.endHour*60+w.endMinute);
+}
+function windowLabel(){
+  const w = activeWindow();
+  const p = (h,m) => `${((h%12)||12)}:${String(m).padStart(2,'0')} ${h<12?'AM':'PM'}`;
+  return `${p(w.startHour, w.startMinute)} – ${p(w.endHour, w.endMinute)}`;
+}
+function isWindowExempt(){ return teacher.role === 'admin_incharge'; }
+function isTodayOff(){ return isOffDateStr(todayStr()); }
+function updateWindowBanner(){
+  const el = $('windowBanner');
+  if (teacherPresentToday === false) {
+    el.className = 'window-banner window-closed';
+    el.textContent = `🔒 Your own attendance isn't marked "Present" for today, so you can't mark student attendance. Please contact the school admin.`;
+    $('submitBtn').disabled = true; return;
+  }
+  if (isTodayOff() && !isWindowExempt()) {
+    el.className = 'window-banner window-off';
+    el.textContent = `🏖️ Today is Off (${offLabelFor(todayStr())}) — there's no school, so attendance isn't needed. Only the Admin Incharge can mark attendance on an Off day.`;
+    $('submitBtn').disabled = true; return;
+  }
+  if (isWindowExempt()) {
+    el.className = 'window-banner window-open';
+    el.textContent = isTodayOff()
+      ? `🟢 As Admin Incharge, you can still mark attendance today even though it's marked Off (${offLabelFor(todayStr())}).`
+      : `🟢 As Admin Incharge, you can mark attendance any time.`;
+    $('submitBtn').disabled = false; return;
+  }
+  const open = withinWindowNow();
+  el.className = 'window-banner ' + (open ? 'window-open' : 'window-closed');
+  el.textContent = open
+    ? `🟢 Attendance window is open (${windowLabel()}) — you can mark attendance now.`
+    : `🔒 Attendance can only be marked between ${windowLabel()}. It is currently closed.`;
+  $('submitBtn').disabled = !open;
+}
+
+function renderRoster(){
+  const list = $('rosterList');
+  if (!students.length) { list.innerHTML = '<div class="center-note">No students are registered in this class.</div>'; return; }
+  list.innerHTML = students.map(s => {
+    const st = statusMap[s.id] || 'present';
+    const btn = (val, label) => `<button class="status-btn ${st===val?'active-'+val:''}" data-id="${s.id}" data-val="${val}">${label}</button>`;
+    return `<div class="roster-row">
+      <div><div class="stu-name">${s.studentName || s.name || ''}</div><div class="stu-no">${s.studentNo || ''}</div></div>
+      <div class="status-btns">${btn('present','P')}${btn('absent','A')}${btn('leave','L')}</div>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('.status-btn').forEach(b => {
+    b.addEventListener('click', () => { statusMap[b.dataset.id] = b.dataset.val; renderRoster(); updateSummary(); });
+  });
+}
+function updateSummary(){
+  let p=0,a=0,l=0;
+  students.forEach(s => { const v = statusMap[s.id] || 'present'; if(v==='present')p++; else if(v==='absent')a++; else l++; });
+  $('sumPresent').textContent = p; $('sumAbsent').textContent = a; $('sumLeave').textContent = l;
+}
+
+$('submitBtn').addEventListener('click', async () => {
+  $('submitError').style.display = 'none'; $('successNote').classList.add('hidden');
+  await checkTeacherPresentToday(); updateWindowBanner();
+  if (teacherPresentToday === false) return;
+  if (isTodayOff() && !isWindowExempt()) return;
+  if (!isWindowExempt() && !withinWindowNow()) return;
+  $('submitBtn').disabled = true; $('submitBtn').textContent = 'Submitting…';
+  const records = {};
+  students.forEach(s => { records[s.id] = { name: s.studentName || s.name || '', status: statusMap[s.id] || 'present' }; });
+  const attId = `att_${currentClassId}_${todayStr()}`;
+  try {
+    await setDoc(doc(dbx, 'attendance', attId), {
+      classId: currentClassId, className: currentClass.className || '', section: currentClass.section || '',
+      date: todayStr(), records, source: 'mobile_teacher',
+      markedBy: teacher.name, markedByUid: teacher.uid, updatedAt: serverTimestamp()
+    });
+    $('successNote').classList.remove('hidden');
+  } catch (e) {
+    $('submitError').textContent = teacherPresentToday === false
+      ? 'Could not save — your own attendance isn\'t marked "Present" for today.'
+      : `Could not save. If the window (${windowLabel()}) has closed, this is expected — otherwise, check your internet connection.`;
+    $('submitError').style.display = 'block';
+  } finally {
+    $('submitBtn').textContent = "Submit Today's Attendance";
+    $('submitBtn').disabled = !(isWindowExempt() || withinWindowNow()) || teacherPresentToday === false || (isTodayOff() && !isWindowExempt());
+  }
+});
+</script>
+</body>
+</html>

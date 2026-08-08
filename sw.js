@@ -1,6 +1,10 @@
-const CACHE = 'hs-attendance-v7';
-const SHELL = ['./', './index.html', './style.css', './manifest.json',
-  './icon-192.png', './icon-512.png'];
+const CACHE = 'hs-teacher-portal-v1';
+const SHELL = [
+  './', './login.html', './dashboard.html', './mark-attendance.html', './my-attendance.html',
+  './complaints.html', './register.html', './notifications.html', './profile.html',
+  './style.css', './teacher-style.css', './teacher-common.js', './teacher-shell.js',
+  './manifest.json', './icon-192.png', './icon-512.png'
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
@@ -14,7 +18,7 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
-// App shell (HTML/CSS/icons) works offline. Firebase calls always
+// App shell (HTML/CSS/JS/icons) works offline. Firebase calls always
 // go to the network — attendance itself needs internet to submit.
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);

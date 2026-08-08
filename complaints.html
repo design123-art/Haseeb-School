@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Student Complaints — Teacher Portal</title>
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#0E9F6E">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="teacher-style.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar-mount"></div>
+  <div class="main">
+    <div class="topbar" id="topbar-mount"></div>
+
+    <div id="page" class="hidden dt-cols even">
+      <div class="card">
+        <div class="card-head">Submit New Complaint</div>
+        <label for="complaintStudent">Student</label>
+        <select id="complaintStudent"><option value="">Select student…</option></select>
+        <label for="complaintText">Complaint / Note</label>
+        <textarea id="complaintText" placeholder="Describe the issue in detail…"></textarea>
+        <button class="btn btn-primary" id="sendComplaintBtn">Send to Admin</button>
+        <div class="error-box" id="complaintError"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">Complaint History</div>
+        <div id="complaintsList"><div class="skel" style="width:92%"></div><div class="skel" style="width:78%"></div><div class="skel" style="width:85%"></div><div class="skel" style="width:65%"></div></div>
+      </div>
+    </div>
+
+    <div id="pageError" class="hidden"><div class="card"><div class="center-note">No class is available to load. Ask the admin to check your role/class assignment.</div></div></div>
+  </div>
+</div>
+
+<script src="firebase-config.js"></script>
+<script type="module">
+import { requireTeacherAuth, dbx, addDoc, collection, query, where, getDocs, serverTimestamp, $ } from './teacher-common.js';
+import { renderTeacherShell } from './teacher-shell.js';
+
+const { teacher } = await requireTeacherAuth();
+const shell = await renderTeacherShell({ active: 'complaints', title: 'Student Complaints', subtitle: 'Report an issue and track past complaints', teacher });
+
+let students = [];
+if (!teacher || !shell.classId) { $('pageError').classList.remove('hidden'); }
+else {
+  $('page').classList.remove('hidden');
+  const snap = await getDocs(query(collection(dbx, 'students'), where('classId', '==', shell.classId)));
+  students = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  $('complaintStudent').innerHTML = '<option value="">Select student…</option>' +
+    students.map(s => `<option value="${s.id}">${s.studentName || s.name || ''} (${s.studentNo || ''})</option>`).join('');
+  await loadComplaints();
+}
+
+$('sendComplaintBtn').addEventListener('click', async () => {
+  $('complaintError').style.display = 'none';
+  const studentId = $('complaintStudent').value;
+  const text = $('complaintText').value.trim();
+  if (!studentId || !text) { $('complaintError').textContent = 'Please select a student and write your complaint.'; $('complaintError').style.display = 'block'; return; }
+  const student = students.find(s => s.id === studentId);
+  const btn = $('sendComplaintBtn'); btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    await addDoc(collection(dbx, 'complaints'), {
+      classId: shell.classId, studentId, studentName: student ? (student.studentName || student.name) : '',
+      text, createdByUid: teacher.uid, createdByName: teacher.name,
+      status: 'open', createdAt: serverTimestamp()
+    });
+    $('complaintText').value = ''; $('complaintStudent').value = '';
+    await loadComplaints();
+  } catch (e) {
+    $('complaintError').textContent = 'Could not send — please check your internet connection.'; $('complaintError').style.display = 'block';
+  } finally { btn.disabled = false; btn.textContent = 'Send to Admin'; }
+});
+
+async function loadComplaints(){
+  const el = $('complaintsList');
+  let snap;
+  try {
+    const q = query(collection(dbx, 'complaints'), where('createdByUid', '==', teacher.uid));
+    snap = await getDocs(q);
+  } catch (e) {
+    el.innerHTML = '<div class="center-note">Could not load complaints — please check your internet connection and try again.</div>';
+    return;
+  }
+  if (snap.empty) { el.innerHTML = '<div class="center-note">You haven\'t sent any complaints yet.</div>'; return; }
+  const docs = snap.docs.slice().sort((a, b) => {
+    const at = a.data().createdAt && a.data().createdAt.toDate ? a.data().createdAt.toDate().getTime() : 0;
+    const bt = b.data().createdAt && b.data().createdAt.toDate ? b.data().createdAt.toDate().getTime() : 0;
+    return bt - at;
+  });
+  el.innerHTML = docs.map(d => {
+    const c = d.data();
+    const when = c.createdAt && c.createdAt.toDate ? c.createdAt.toDate().toLocaleDateString() : '';
+    return `<div class="complaint-item"><b>${c.studentName || ''}</b><div>${c.text}</div>
+      <div class="meta">${when} · ${c.status === 'open' ? '🟡 Pending' : '✅ Reviewed'}</div></div>`;
+  }).join('');
+}
+</script>
+</body>
+</html>
