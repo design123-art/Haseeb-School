@@ -34,10 +34,13 @@
 <!-- APP SHELL -->
 <div class="screen hidden app-shell" id="appScreen">
 
-  <aside class="sidebar">
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
       <img src="icon-192.png" alt="">
       <div><b>Al Haseeb Model</b><small>Secondary School</small></div>
+      <button class="sidebar-close" id="sidebarCloseBtn">✕</button>
     </div>
     <nav class="sidebar-nav">
       <div class="nav-link active" data-view="dashboard"><span class="nav-icon">🏠</span>Dashboard</div>
@@ -62,6 +65,7 @@
   <div class="main-area">
     <div class="topbar">
       <div class="topbar-id">
+        <button class="hamburger-btn" id="hamburgerBtn" aria-label="Menu"><span></span><span></span><span></span></button>
         <div>
           <div class="topbar-greeting" id="dashGreeting">Welcome back</div>
           <div class="who" id="topbarDate"></div>
@@ -311,8 +315,15 @@ function showView(name){
   if (name === 'myAttendance') loadMyAttendance();
   if (name === 'notifications') loadNotifications(true);
 }
-document.querySelectorAll('.tile, .nav-link').forEach(t => t.addEventListener('click', () => showView(t.dataset.view)));
+document.querySelectorAll('.tile, .nav-link').forEach(t => t.addEventListener('click', () => { showView(t.dataset.view); closeMobileSidebar(); }));
 document.querySelectorAll('[data-back]').forEach(b => b.addEventListener('click', () => showView('dashboard')));
+
+// ---------------- Mobile hamburger drawer ----------------
+function openMobileSidebar(){ $('sidebar').classList.add('mobile-open'); $('sidebarBackdrop').classList.add('visible'); }
+function closeMobileSidebar(){ $('sidebar').classList.remove('mobile-open'); $('sidebarBackdrop').classList.remove('visible'); }
+$('hamburgerBtn').addEventListener('click', openMobileSidebar);
+$('sidebarCloseBtn').addEventListener('click', closeMobileSidebar);
+$('sidebarBackdrop').addEventListener('click', closeMobileSidebar);
 
 // ---------------- Dashboard header (greeting + date) ----------------
 function renderDashboardHeader(){
