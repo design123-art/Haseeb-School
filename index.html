@@ -88,10 +88,11 @@
       </div>
 
       <div class="summary-strip dash-summary">
-        <div class="chip chip-present"><b id="dashPresent">0</b><small>Present Today</small></div>
-        <div class="chip chip-absent"><b id="dashAbsent">0</b><small>Absent Today</small></div>
-        <div class="chip chip-leave"><b id="dashLeave">0</b><small>On Leave</small></div>
+        <div class="chip chip-present"><b id="dashPresent">—</b><small>Present Today</small></div>
+        <div class="chip chip-absent"><b id="dashAbsent">—</b><small>Absent Today</small></div>
+        <div class="chip chip-leave"><b id="dashLeave">—</b><small>On Leave</small></div>
       </div>
+      <div class="dash-note hidden" id="dashSummaryNote">📋 Today's attendance hasn't been marked yet — head to <b>Mark Attendance</b> to submit it.</div>
 
       <div class="tiles">
         <div class="tile" data-view="attendance">
@@ -346,6 +347,7 @@ let currentClassId = null;
 let accessibleClasses = []; // for Incharge roles: every class in their group
 let students = [];
 let statusMap = {};
+let attendanceMarkedToday = false;
 
 const ROLE_LABELS = {
   teacher: 'Class Teacher',
@@ -464,6 +466,7 @@ async function setActiveClass(classId){
 
   const attId = `att_${classId}_${todayStr()}`;
   const existing = await getDoc(doc(dbx, 'attendance', attId));
+  attendanceMarkedToday = existing.exists();
   if (existing.exists()) {
     const recs = existing.data().records || {};
     Object.keys(recs).forEach(sid => { statusMap[sid] = recs[sid].status; });
@@ -567,7 +570,15 @@ function updateSummary(){
   let p=0,a=0,l=0;
   students.forEach(s => { const v = statusMap[s.id] || 'present'; if(v==='present')p++; else if(v==='absent')a++; else l++; });
   $('sumPresent').textContent = p; $('sumAbsent').textContent = a; $('sumLeave').textContent = l;
-  if ($('dashPresent')) { $('dashPresent').textContent = p; $('dashAbsent').textContent = a; $('dashLeave').textContent = l; }
+  if ($('dashPresent')) {
+    if (attendanceMarkedToday) {
+      $('dashPresent').textContent = p; $('dashAbsent').textContent = a; $('dashLeave').textContent = l;
+      $('dashSummaryNote').classList.add('hidden');
+    } else {
+      $('dashPresent').textContent = '—'; $('dashAbsent').textContent = '—'; $('dashLeave').textContent = '—';
+      $('dashSummaryNote').classList.remove('hidden');
+    }
+  }
 }
 
 $('submitBtn').addEventListener('click', async () => {
@@ -587,6 +598,8 @@ $('submitBtn').addEventListener('click', async () => {
       markedBy: currentTeacher.name, markedByUid: currentTeacher.uid, updatedAt: serverTimestamp()
     });
     $('successNote').classList.remove('hidden');
+    attendanceMarkedToday = true;
+    updateSummary();
   } catch (e) {
     $('submitError').textContent = teacherPresentToday === false
       ? 'Could not save — your own attendance isn\'t marked "Present" for today.'
